@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,9 +36,9 @@ typedef unsigned char BYTE;
   #include <ApplicationServices/ApplicationServices.h>
 #endif
 
-#include "osx/DarwinUtils.h"
+#include "platform/darwin/DarwinUtils.h"
 
-#include "osx/CocoaInterface.h"
+#include "platform/darwin/osx/CocoaInterface.h"
 
 #if defined(TARGET_DARWIN_OSX)
 OSStatus SendAppleEventToSystemProcess(AEEventID eventToSendID)
@@ -226,7 +226,7 @@ bool CCocoaPowerSyscall::HasBattery(void)
 
 int CCocoaPowerSyscall::BatteryLevel(void)
 {
-  return DarwinBatteryLevel();
+  return CDarwinUtils::BatteryLevel();
 }
 
 bool CCocoaPowerSyscall::PumpPowerEvents(IPowerEventsCallback *callback)
@@ -341,12 +341,12 @@ void CCocoaPowerSyscall::OSPowerCallBack(void *refcon, io_service_t service, nat
       IOAllowPowerChange(ctx->m_root_port, (long)msg_arg);
       //CLog::Log(LOGDEBUG, "%s - kIOMessageSystemWillSleep", __FUNCTION__);
       // let XBMC know system will sleep
-      // TODO:
+      //! @todo implement
     break;
     case kIOMessageSystemHasPoweredOn:
       // System has awakened from sleep.
       // let XBMC know system has woke
-      // TODO:
+      //! @todo implement
       ctx->m_OnResume = true;
       //CLog::Log(LOGDEBUG, "%s - kIOMessageSystemHasPoweredOn", __FUNCTION__);
     break;

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -37,21 +37,16 @@ TEST(TestCrc32, Compute_1)
 
 TEST(TestCrc32, Compute_2)
 {
-  Crc32 a;
   uint32_t varcrc;
-  CStdString s = refdata;
-  a.Compute(s);
-  varcrc = a;
+  std::string s = refdata;
+  varcrc = Crc32::Compute(s);
   EXPECT_EQ(0xa4eb60e3, varcrc);
 }
 
 TEST(TestCrc32, ComputeFromLowerCase)
 {
-  Crc32 a;
-  uint32_t varcrc;
-  CStdString s = refdata;
-  a.ComputeFromLowerCase(s);
-  varcrc = a;
+  std::string s = refdata;
+  uint32_t varcrc = Crc32::ComputeFromLowerCase(s);
   EXPECT_EQ((uint32_t)0x7f045b3e, varcrc);
 }
 
@@ -59,8 +54,8 @@ TEST(TestCrc32, Reset)
 {
   Crc32 a;
   uint32_t varcrc;
-  CStdString s = refdata;
-  a.ComputeFromLowerCase(s);
+  std::string s = refdata;
+  a.Compute(s.c_str(), s.length());
   a.Reset();
   varcrc = a;
   EXPECT_EQ(0xffffffff, varcrc);

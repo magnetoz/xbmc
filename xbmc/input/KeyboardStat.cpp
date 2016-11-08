@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2007-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,18 +24,25 @@
 //#define DEBUG_KEYBOARD_GETCHAR
 
 #include "KeyboardStat.h"
-#include "KeyboardLayoutConfiguration.h"
 #include "windowing/XBMC_events.h"
-#include "utils/TimeUtils.h"
 #include "input/XBMC_keytable.h"
 #include "input/XBMC_vkeys.h"
 #include "peripherals/Peripherals.h"
 #include "peripherals/devices/PeripheralHID.h"
+#include "threads/SystemClock.h"
+#include "utils/log.h"
 
-using namespace std;
+#define HOLD_THRESHOLD 250
+
 using namespace PERIPHERALS;
 
-CKeyboardStat g_Keyboard;
+bool operator==(const XBMC_keysym& lhs, const XBMC_keysym& rhs)
+{
+  return lhs.mod      == rhs.mod      &&
+         lhs.scancode == rhs.scancode &&
+         lhs.sym      == rhs.sym      &&
+         lhs.unicode  == rhs.unicode;
+}
 
 CKeyboardStat::CKeyboardStat()
 {
@@ -53,21 +60,22 @@ void CKeyboardStat::Initialize()
 
 bool CKeyboardStat::LookupSymAndUnicodePeripherals(XBMC_keysym &keysym, uint8_t *key, char *unicode)
 {
-  vector<CPeripheral *> hidDevices;
+  PeripheralVector hidDevices;
   if (g_peripherals.GetPeripheralsWithFeature(hidDevices, FEATURE_HID))
   {
-    for (unsigned int iDevicePtr = 0; iDevicePtr < hidDevices.size(); iDevicePtr++)
+    for (auto& peripheral : hidDevices)
     {
-      CPeripheralHID *hidDevice = (CPeripheralHID *) hidDevices.at(iDevicePtr);
-      if (hidDevice && hidDevice->LookupSymAndUnicode(keysym, key, unicode))
+      std::shared_ptr<CPeripheralHID> hidDevice = std::static_pointer_cast<CPeripheralHID>(peripheral);
+      if (hidDevice->LookupSymAndUnicode(keysym, key, unicode))
         return true;
     }
   }
   return false;
 }
 
-const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
-{ uint8_t vkey;
+CKey CKeyboardStat::TranslateKey(XBMC_keysym& keysym) const
+{
+  uint8_t vkey;
   wchar_t unicode;
   char ascii;
   uint32_t modifiers;
@@ -83,6 +91,8 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
     modifiers |= CKey::MODIFIER_ALT;
   if (keysym.mod & XBMCKMOD_SUPER)
     modifiers |= CKey::MODIFIER_SUPER;
+  if (keysym.mod & XBMCKMOD_META)
+    modifiers |= CKey::MODIFIER_META;
 
   CLog::Log(LOGDEBUG, "Keyboard: scancode: 0x%02x, sym: 0x%04x, unicode: 0x%04x, modifier: 0x%x", keysym.scancode, keysym.sym, keysym.unicode, keysym.mod);
 
@@ -147,16 +157,11 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
     }
   }
 
-  // At this point update the key hold time
-  if (keysym.mod == m_lastKeysym.mod && keysym.scancode == m_lastKeysym.scancode && keysym.sym == m_lastKeysym.sym && keysym.unicode == m_lastKeysym.unicode)
+  if (keysym == m_lastKeysym)
   {
-    held = CTimeUtils::GetFrameTime() - m_lastKeyTime;
-  }
-  else
-  {
-    m_lastKeysym = keysym;
-    m_lastKeyTime = CTimeUtils::GetFrameTime();
-    held = 0;
+    held = XbmcThreads::SystemClockMillis() - m_lastKeyTime;
+    if (held > HOLD_THRESHOLD)
+      modifiers |= CKey::MODIFIER_LONG;
   }
 
   // For all shift-X keys except shift-A to shift-Z and shift-F1 to shift-F24 the
@@ -176,6 +181,15 @@ const CKey CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
   return key;
 }
 
+void CKeyboardStat::ProcessKeyDown(XBMC_keysym& keysym)
+{
+  if (!(m_lastKeysym == keysym))
+  {
+    m_lastKeysym = keysym;
+    m_lastKeyTime = XbmcThreads::SystemClockMillis();
+  }
+}
+
 void CKeyboardStat::ProcessKeyUp(void)
 {
   memset(&m_lastKeysym, 0, sizeof(m_lastKeysym));
@@ -186,9 +200,9 @@ void CKeyboardStat::ProcessKeyUp(void)
 // Used to make the debug log more intelligable
 // The KeyID includes the flags for ctrl, alt etc
 
-CStdString CKeyboardStat::GetKeyName(int KeyID)
+std::string CKeyboardStat::GetKeyName(int KeyID)
 { int keyid;
-  CStdString keyname;
+  std::string keyname;
   XBMCKEYTABLE keytable;
 
   keyname.clear();
@@ -203,15 +217,28 @@ CStdString CKeyboardStat::GetKeyName(int KeyID)
     keyname.append("alt-");
   if (KeyID & CKey::MODIFIER_SUPER)
     keyname.append("win-");
+  if (KeyID & CKey::MODIFIER_META)
+    keyname.append("meta-");
+  if (KeyID & CKey::MODIFIER_LONG)
+    keyname.append("long-");
 
 // Now get the key name
 
   keyid = KeyID & 0xFF;
-  if (KeyTableLookupVKeyName(keyid, &keytable))
+  bool VKeyFound = KeyTableLookupVKeyName(keyid, &keytable);
+  if (VKeyFound)
     keyname.append(keytable.keyname);
   else
-    keyname.AppendFormat("%i", keyid);
-  keyname.AppendFormat(" (0x%02x)", KeyID);
+    keyname += StringUtils::Format("%i", keyid);
+  
+  // in case this might be an universalremote keyid
+  // we also print the possile corresponding obc code
+  // so users can easily find it in their universalremote
+  // map xml
+  if (VKeyFound || keyid > 255)
+    keyname += StringUtils::Format(" (0x%02x)", KeyID);
+  else// obc keys are 255 -rawid
+    keyname += StringUtils::Format(" (0x%02x, obc%i)", KeyID, 255 - KeyID);
 
   return keyname;
 }

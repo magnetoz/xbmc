@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,8 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
+#include <vector>
 
 #include "GUIImage.h"
 #include "utils/Stopwatch.h"
@@ -57,7 +59,7 @@ public:
   virtual bool IsDynamicallyAllocated() { return m_bDynamicResourceAlloc; };
   virtual void SetInvalid();
   virtual bool CanFocus() const;
-  virtual CStdString GetDescription() const;
+  virtual std::string GetDescription() const;
 
   void SetInfo(const CGUIInfoLabel &info);
   void SetAspectRatio(const CAspectRatio &ratio);
@@ -73,16 +75,16 @@ protected:
   class CMultiImageJob : public CJob
   {
   public:
-    CMultiImageJob(const CStdString &path);
+    CMultiImageJob(const std::string &path);
     virtual bool DoWork();
     virtual const char *GetType() const { return "multiimage"; };
 
-    std::vector<CStdString> m_files;
-    CStdString              m_path;
+    std::vector<std::string> m_files;
+    std::string              m_path;
   };
 
   CGUIInfoLabel m_texturePath;
-  CStdString m_currentPath;
+  std::string m_currentPath;
   unsigned int m_currentImage;
   CStopWatch m_imageTimer;
   unsigned int m_timePerImage;
@@ -91,7 +93,7 @@ protected:
   bool m_loop;
 
   bool m_bDynamicResourceAlloc;
-  std::vector<CStdString> m_files;
+  std::vector<std::string> m_files;
 
   CGUIImage m_image;
 

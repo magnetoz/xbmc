@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,10 +30,9 @@ namespace XBMCAddon
 {
   namespace xbmc
   {
-    // TODO: need a means to check for a valid construction
-    //  either by throwing an exception or by an "isValid" check
-    PlayList::PlayList(int playList) throw (PlayListException) : 
-      AddonClass("PlayList"),
+    //! @todo need a means to check for a valid construction
+    //!  either by throwing an exception or by an "isValid" check
+    PlayList::PlayList(int playList) : 
       refs(1), iPlayList(playList), pPlayList(NULL)
     {
       // we do not create our own playlist, just using the ones from playlistplayer
@@ -71,7 +69,7 @@ namespace XBMCAddon
       pPlayList->Insert(items, index);
     }
 
-    bool PlayList::load(const char* cFileName) throw (PlayListException)
+    bool PlayList::load(const char* cFileName)
     {
       CFileItem item(cFileName);
       item.SetPath(cFileName);
@@ -82,7 +80,7 @@ namespace XBMCAddon
 
         // load a playlist like .m3u, .pls
         // first get correct factory to load playlist
-        std::auto_ptr<CPlayList> pPlayList (CPlayListFactory::Create(item));
+        std::unique_ptr<CPlayList> pPlayList (CPlayListFactory::Create(item));
         if ( NULL != pPlayList.get())
         {
           // load it
@@ -97,7 +95,7 @@ namespace XBMCAddon
           for (int i=0; i < (int)pPlayList->size(); ++i)
           {
             CFileItemPtr playListItem =(*pPlayList)[i];
-            if (playListItem->GetLabel().IsEmpty())
+            if (playListItem->GetLabel().empty())
               playListItem->SetLabel(URIUtils::GetFileName(playListItem->GetPath()));
 
             this->pPlayList->Add(playListItem);
@@ -141,7 +139,7 @@ namespace XBMCAddon
       return g_playlistPlayer.GetCurrentSong();
     }
 
-    XBMCAddon::xbmcgui::ListItem* PlayList::operator [](long i) throw (PlayListException)
+    XBMCAddon::xbmcgui::ListItem* PlayList::operator [](long i)
     {
       int iPlayListSize = size();
 

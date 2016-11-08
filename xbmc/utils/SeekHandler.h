@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,23 +19,68 @@
  *
  */
 
+#include <map>
+#include <utility>
+#include <vector>
+
+#include "input/Key.h"
+#include "interfaces/IActionListener.h"
+#include "settings/lib/ISettingCallback.h"
+#include "threads/CriticalSection.h"
 #include "utils/Stopwatch.h"
 
-class CSeekHandler
+enum SeekType
+{
+  SEEK_TYPE_VIDEO = 0,
+  SEEK_TYPE_MUSIC = 1
+};
+
+class CSeekHandler : public ISettingCallback, public IActionListener
 {
 public:
-  CSeekHandler();
+  static CSeekHandler& GetInstance();
 
-  void Seek(bool forward, float amount, float duration = 0);
-  void Process();
+  static void SettingOptionsSeekStepsFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current, void *data);
+  
+  virtual void OnSettingChanged(const CSetting *setting) override;
+  virtual bool OnAction(const CAction &action) override;
+
+  void Seek(bool forward, float amount, float duration = 0, bool analogSeek = false, SeekType type = SEEK_TYPE_VIDEO);
+  void SeekSeconds(int seconds);
+  void FrameMove();
   void Reset();
+  void Configure();
 
-  float GetPercent() const;
+  int GetSeekSize() const;
   bool InProgress() const;
+
+  bool HasTimeCode() const { return m_timeCodePosition > 0; }
+  int GetTimeCodeSeconds() const;
+
+protected:
+  CSeekHandler();
+  CSeekHandler(const CSeekHandler&);
+  CSeekHandler& operator=(CSeekHandler const&);
+  virtual ~CSeekHandler();
+  bool SeekTimeCode(const CAction &action);
+  void ChangeTimeCode(int remote);
+
 private:
-  static const int time_before_seek = 500;
-  static const int time_for_display = 2000; // TODO: WTF?
-  bool       m_requireSeek;
-  float      m_percent;
+  static const int analogSeekDelay = 500;
+  
+  int GetSeekStepSize(SeekType type, int step);
+  int m_seekDelay;
+  std::map<SeekType, int > m_seekDelays;
+  bool m_requireSeek;
+  bool m_analogSeek;
+  double m_seekSize;
+  int m_seekStep;
+  std::map<SeekType, std::vector<int> > m_forwardSeekSteps;
+  std::map<SeekType, std::vector<int> > m_backwardSeekSteps;
   CStopWatch m_timer;
+  CStopWatch m_timerTimeCode;
+  int m_timeCodeStamp[6];
+  int m_timeCodePosition;
+
+  CCriticalSection m_critSection;
 };

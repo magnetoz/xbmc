@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,7 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -23,7 +24,6 @@
 #include "utils/StringUtils.h"
 #include "utils/Variant.h"
 
-using namespace std;
 using namespace XFILE;
 using namespace XFILE::MUSICDATABASEDIRECTORY;
 
@@ -37,10 +37,10 @@ CMusicDbUrl::~CMusicDbUrl()
 bool CMusicDbUrl::parse()
 {
   // the URL must start with musicdb://
-  if (m_url.GetProtocol() != "musicdb" || m_url.GetFileName().empty())
+  if (!m_url.IsProtocol("musicdb") || m_url.GetFileName().empty())
     return false;
 
-  CStdString path = m_url.Get();
+  std::string path = m_url.Get();
   NODE_TYPE dirType = CMusicDatabaseDirectory::GetDirectoryType(path);
   NODE_TYPE childType = CMusicDatabaseDirectory::GetDirectoryChildType(path);
 
@@ -101,6 +101,10 @@ bool CMusicDbUrl::parse()
 
     case NODE_TYPE_GENRE:
       m_type = "genres";
+      break;
+
+    case NODE_TYPE_ROLE:
+      m_type = "roles";
       break;
 
     case NODE_TYPE_YEAR:

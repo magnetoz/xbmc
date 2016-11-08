@@ -1,9 +1,8 @@
-#ifndef __X_HANDLE__
-#define __X_HANDLE__
+#pragma once
 
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,20 +15,21 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef _WIN32
+#ifndef TARGET_WINDOWS
 
 #include <list>
+#include <string>
+#include <vector>
 
 #include "PlatformDefs.h"
 #include "XHandlePublic.h"
 #include "threads/Condition.h"
 #include "threads/CriticalSection.h"
-#include "utils/StdString.h"
 
 struct CXHandle {
 
@@ -50,13 +50,13 @@ public:
 
   // simulate mutex and critical section
   CCriticalSection *m_hMutex;
-  int       RecursionCount;  // for mutex - for compatibility with WIN32 critical section
+  int       RecursionCount;  // for mutex - for compatibility with TARGET_WINDOWS critical section
   int       fd;
   bool      m_bManualEvent;
   time_t    m_tmCreation;
-  CStdStringArray  m_FindFileResults;
+  std::vector<std::string> m_FindFileResults;
   int              m_nFindFileIterator;
-  CStdString       m_FindFileDir;
+  std::string      m_FindFileDir;
   off64_t          m_iOffset;
   bool             m_bCDROM;
   bool             m_bEventSet;
@@ -70,8 +70,6 @@ protected:
   static int m_objectTracker[10];
 
 };
-
-#endif
 
 #endif
 

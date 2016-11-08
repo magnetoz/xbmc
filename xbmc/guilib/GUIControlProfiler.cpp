@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include "GUIControlProfiler.h"
 #include "utils/XBMCTinyXML.h"
 #include "utils/TimeUtils.h"
+#include "utils/StringUtils.h"
 
 bool CGUIControlProfiler::m_bIsRunning = false;
 
@@ -91,15 +92,11 @@ void CGUIControlProfilerItem::SaveToXML(TiXmlElement *parent)
   {
   case CGUIControl::GUICONTROL_BUTTON:
     lpszType = "button"; break;
-  case CGUIControl::GUICONTROL_CHECKMARK:
-    lpszType = "checkmark"; break;
   case CGUIControl::GUICONTROL_FADELABEL:
     lpszType = "fadelabel"; break;
   case CGUIControl::GUICONTROL_IMAGE:
   case CGUIControl::GUICONTROL_BORDEREDIMAGE:
     lpszType = "image"; break;
-  case CGUIControl::GUICONTROL_LARGE_IMAGE:
-    lpszType = "largeimage"; break;
   case CGUIControl::GUICONTROL_LABEL:
     lpszType = "label"; break;
   case CGUIControl::GUICONTROL_LISTGROUP:
@@ -110,8 +107,6 @@ void CGUIControlProfilerItem::SaveToXML(TiXmlElement *parent)
     lpszType = "radiobutton"; break;
   case CGUIControl::GUICONTROL_RSS:
     lpszType = "rss"; break;
-  case CGUIControl::GUICONTROL_SELECTBUTTON:
-    lpszType = "selectbutton"; break;
   case CGUIControl::GUICONTROL_SLIDER:
     lpszType = "slider"; break;
   case CGUIControl::GUICONTROL_SETTINGS_SLIDER:
@@ -144,8 +139,6 @@ void CGUIControlProfilerItem::SaveToXML(TiXmlElement *parent)
     lpszType = "scrollbar"; break;
   case CGUIControl::GUICONTROL_LISTLABEL:
     lpszType = "label"; break;
-  case CGUIControl::GUICONTROL_MULTISELECT:
-    lpszType = "multiselect"; break;
   case CGUIControl::GUICONTAINER_LIST:
     lpszType = "list"; break;
   case CGUIControl::GUICONTAINER_WRAPLIST:
@@ -163,20 +156,18 @@ void CGUIControlProfilerItem::SaveToXML(TiXmlElement *parent)
     xmlControl->SetAttribute("type", lpszType);
   if (m_controlID != 0)
   {
-    CStdString str;
-    str.Format("%u", m_controlID);
+    std::string str = StringUtils::Format("%u", m_controlID);
     xmlControl->SetAttribute("id", str.c_str());
   }
 
   float pct = (float)GetTotalTime() / (float)m_pProfiler->GetTotalTime();
   if (pct > 0.01f)
   {
-    CStdString str;
-    str.Format("%.0f", pct * 100.0f);
+    std::string str = StringUtils::Format("%.0f", pct * 100.0f);
     xmlControl->SetAttribute("percent", str.c_str());
   }
 
-  if (!m_strDescription.IsEmpty())
+  if (!m_strDescription.empty())
   {
     TiXmlElement *elem = new TiXmlElement("description");
     xmlControl->LinkEndChild(elem);
@@ -189,16 +180,16 @@ void CGUIControlProfilerItem::SaveToXML(TiXmlElement *parent)
   unsigned int rend = m_renderTime / 100;
   if (vis || rend)
   {
-    CStdString val;
+    std::string val;
     TiXmlElement *elem = new TiXmlElement("rendertime");
     xmlControl->LinkEndChild(elem);
-    val.Format("%u", rend);
+    val = StringUtils::Format("%u", rend);
     TiXmlText *text = new TiXmlText(val.c_str());
     elem->LinkEndChild(text);
 
     elem = new TiXmlElement("visibletime");
     xmlControl->LinkEndChild(elem);
-    val.Format("%u", vis);
+    val = StringUtils::Format("%u", vis);
     text = new TiXmlText(val.c_str());
     elem->LinkEndChild(text);
   }
@@ -336,7 +327,7 @@ void CGUIControlProfiler::EndFrame(void)
 
 bool CGUIControlProfiler::SaveResults(void)
 {
-  if (m_strOutputFile.IsEmpty())
+  if (m_strOutputFile.empty())
     return false;
 
   CXBMCTinyXML doc;
@@ -344,8 +335,7 @@ bool CGUIControlProfiler::SaveResults(void)
   doc.InsertEndChild(decl);
 
   TiXmlElement *root = new TiXmlElement("guicontrolprofiler");
-  CStdString str;
-  str.Format("%d", m_iFrameCount);
+  std::string str = StringUtils::Format("%d", m_iFrameCount);
   root->SetAttribute("framecount", str.c_str());
   root->SetAttribute("timeunit", "ms");
   doc.LinkEndChild(root);

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,10 +32,10 @@
             });
         },
         'displayCommunicationError': function (m) {
-            window.clearTimeout(xbmc.core.commsErrorTiemout);
+            window.clearTimeout(xbmc.core.commsErrorTimeout);
             var message = m || 'Connection to server lost';
             $('#commsErrorPanel').html(message).show();
-            xbmc.core.commsErrorTiemout = window.setTimeout('xbmc.core.hideCommunicationError()', 5000);
+            xbmc.core.commsErrorTimeout = window.setTimeout('xbmc.core.hideCommunicationError()', 5000);
         },
         'durationToString': function (duration) {
             var total_seconds = duration || 0,

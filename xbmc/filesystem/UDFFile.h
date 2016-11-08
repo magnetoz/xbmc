@@ -1,9 +1,11 @@
-#ifndef _FILEUDF_H
-#define _FILEUDF_H
+#pragma once
 
 /*
  *      Copyright (C) 2010 Team Boxee
  *      http://www.boxee.tv
+ *
+ *      Copyright (C) 2010-2013 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +18,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
@@ -37,7 +39,7 @@ public:
   virtual bool Open(const CURL& url);
   virtual bool Exists(const CURL& url);
   virtual int Stat(const CURL& url, struct __stat64* buffer);
-  virtual unsigned int Read(void* lpBuf, int64_t uiBufSize);
+  virtual ssize_t Read(void* lpBuf, size_t uiBufSize);
   virtual int64_t Seek(int64_t iFilePosition, int iWhence = SEEK_SET);
   virtual void Close();
 protected:
@@ -47,4 +49,3 @@ protected:
 };
 }
 
-#endif

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,9 +21,7 @@
 #include "GUIMessage.h"
 #include "LocalizeStrings.h"
 
-using namespace std;
-
-CStdString CGUIMessage::empty_string;
+std::string CGUIMessage::empty_string;
 
 CGUIMessage::CGUIMessage(int msg, int senderID, int controlID, int param1, int param2)
 {
@@ -101,7 +99,7 @@ int CGUIMessage::GetSenderId() const
 }
 
 
-const CGUIMessage& CGUIMessage::operator = (const CGUIMessage& msg)
+CGUIMessage& CGUIMessage::operator = (const CGUIMessage& msg)
 {
   if (this == &msg) return * this;
 
@@ -133,12 +131,12 @@ void CGUIMessage::SetPointer(void* lpVoid)
   m_pointer = lpVoid;
 }
 
-void CGUIMessage::SetLabel(const string& strLabel)
+void CGUIMessage::SetLabel(const std::string& strLabel)
 {
   m_strLabel = strLabel;
 }
 
-const string& CGUIMessage::GetLabel() const
+const std::string& CGUIMessage::GetLabel() const
 {
   return m_strLabel;
 }
@@ -148,19 +146,19 @@ void CGUIMessage::SetLabel(int iString)
   m_strLabel = g_localizeStrings.Get(iString);
 }
 
-void CGUIMessage::SetStringParam(const CStdString& strParam)
+void CGUIMessage::SetStringParam(const std::string& strParam)
 {
   m_params.clear();
   if (strParam.size())
     m_params.push_back(strParam);
 }
 
-void CGUIMessage::SetStringParams(const vector<CStdString> &params)
+void CGUIMessage::SetStringParams(const std::vector<std::string> &params)
 {
   m_params = params;
 }
 
-const CStdString& CGUIMessage::GetStringParam(size_t param) const
+const std::string& CGUIMessage::GetStringParam(size_t param) const
 {
   if (param >= m_params.size())
     return empty_string;

@@ -1,8 +1,7 @@
 #pragma once
-
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,50 +19,45 @@
  *
  */
 
-#include "GUIWindowPVRCommon.h"
 #include "video/VideoThumbLoader.h"
 #include "video/VideoDatabase.h"
-#include "utils/Observer.h"
+
+#include "GUIWindowPVRBase.h"
 
 namespace PVR
 {
-  class CGUIWindowPVR;
-
-  class CGUIWindowPVRRecordings : public CGUIWindowPVRCommon, private Observer
+  class CGUIWindowPVRRecordings : public CGUIWindowPVRBase
   {
-    friend class CGUIWindowPVR;
-
   public:
-    CGUIWindowPVRRecordings(CGUIWindowPVR *parent);
-    virtual ~CGUIWindowPVRRecordings(void) {};
+    CGUIWindowPVRRecordings(bool bRadio);
+    virtual ~CGUIWindowPVRRecordings(void);
 
-    static CStdString GetResumeString(const CFileItem& item);
+    static std::string GetResumeString(const CFileItem& item);
 
-    void GetContextButtons(int itemNumber, CContextButtons &buttons) const;
-    bool OnAction(const CAction &action);
-    bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-    void OnWindowUnload(void);
-    void UpdateData(bool bUpdateSelectedFile = true);
-    void Notify(const Observable &obs, const ObservableMessage msg);
-    void UnregisterObservers(void);
-    void ResetObservers(void);
+    virtual void OnWindowLoaded() override;
+    virtual bool OnMessage(CGUIMessage& message) override;
+    virtual bool OnAction(const CAction &action) override;
+    virtual void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+    virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
+    virtual bool Update(const std::string &strDirectory, bool updateFilterPath = true) override;
+    virtual void UpdateButtons(void) override;
 
   protected:
-    virtual void BeforeUpdate(const CStdString &strDirectory);
-    virtual void AfterUpdate(CFileItemList& items);
+    virtual std::string GetDirectoryPath(void) override;
+    virtual void OnPrepareFileItems(CFileItemList &items) override;
 
   private:
-    bool OnClickButton(CGUIMessage &message);
-    bool OnClickList(CGUIMessage &message);
-
+    bool ActionDeleteRecording(CFileItem *item);
     bool OnContextButtonDelete(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonUndelete(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonDeleteAll(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonInfo(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonPlay(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonRename(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonMarkWatched(const CFileItemPtr &item, CONTEXT_BUTTON button);
 
-    CStdString m_strSelectedPath;
     CVideoThumbLoader m_thumbLoader;
     CVideoDatabase m_database;
+    bool m_bShowDeletedRecordings;
   };
 }

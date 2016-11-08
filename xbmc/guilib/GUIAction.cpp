@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
@@ -23,8 +23,6 @@
 #include "GUIWindowManager.h"
 #include "GUIControl.h"
 #include "GUIInfoManager.h"
-
-using namespace std;
 
 CGUIAction::CGUIAction()
 {
@@ -37,37 +35,41 @@ CGUIAction::CGUIAction(int controlID)
   SetNavigation(controlID);
 }
 
-bool CGUIAction::ExecuteActions(int controlID, int parentID) const
+bool CGUIAction::ExecuteActions(int controlID, int parentID, const CGUIListItemPtr &item /* = NULL */) const
 {
-  if (m_actions.size() == 0) return false;
-  bool retval = false;
-  CGUIAction copy(*this);
-  for (ciActions it = copy.m_actions.begin() ; it != copy.m_actions.end() ; it++)
+  if (m_actions.empty()) return false;
+  // take a copy of actions that satisfy our conditions
+  std::vector<std::string> actions;
+  for (ciActions it = m_actions.begin() ; it != m_actions.end() ; ++it)
   {
-    if (it->condition.IsEmpty() || g_infoManager.EvaluateBool(it->condition))
+    if (it->condition.empty() || g_infoManager.EvaluateBool(it->condition, 0, item))
     {
       if (!StringUtils::IsInteger(it->action))
-      {
-        CGUIMessage msg(GUI_MSG_EXECUTE, controlID, parentID);
-        msg.SetStringParam(it->action);
-        if (m_sendThreadMessages)
-          g_windowManager.SendThreadMessage(msg);
-        else
-          g_windowManager.SendMessage(msg);
-        retval |= true;
-      }
+        actions.push_back(it->action);
     }
+  }
+  // execute them
+  bool retval = false;
+  for (std::vector<std::string>::iterator i = actions.begin(); i != actions.end(); ++i)
+  {
+    CGUIMessage msg(GUI_MSG_EXECUTE, controlID, parentID, 0, 0, item);
+    msg.SetStringParam(*i);
+    if (m_sendThreadMessages)
+      g_windowManager.SendThreadMessage(msg);
+    else
+      g_windowManager.SendMessage(msg);
+    retval = true;
   }
   return retval;
 }
 
 int CGUIAction::GetNavigation() const
 {
-  for (ciActions it = m_actions.begin() ; it != m_actions.end() ; it++)
+  for (ciActions it = m_actions.begin() ; it != m_actions.end() ; ++it)
   {
     if (StringUtils::IsInteger(it->action))
     {
-      if (it->condition.IsEmpty() || g_infoManager.EvaluateBool(it->condition))
+      if (it->condition.empty() || g_infoManager.EvaluateBool(it->condition))
         return atoi(it->action.c_str());
     }
   }
@@ -77,11 +79,10 @@ int CGUIAction::GetNavigation() const
 void CGUIAction::SetNavigation(int id)
 {
   if (id == 0) return;
-  CStdString strId;
-  strId.Format("%i", id);
-  for (iActions it = m_actions.begin() ; it != m_actions.end() ; it++)
+  std::string strId = StringUtils::Format("%i", id);
+  for (iActions it = m_actions.begin() ; it != m_actions.end() ; ++it)
   {
-    if (StringUtils::IsInteger(it->action) && it->condition.IsEmpty())
+    if (StringUtils::IsInteger(it->action) && it->condition.empty())
     {
       it->action = strId;
       return;
@@ -94,9 +95,9 @@ void CGUIAction::SetNavigation(int id)
 
 bool CGUIAction::HasActionsMeetingCondition() const
 {
-  for (ciActions it = m_actions.begin() ; it != m_actions.end() ; it++)
+  for (ciActions it = m_actions.begin() ; it != m_actions.end() ; ++it)
   {
-    if (it->condition.IsEmpty() || g_infoManager.EvaluateBool(it->condition))
+    if (it->condition.empty() || g_infoManager.EvaluateBool(it->condition))
       return true;
   }
   return false;

@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2012-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,93 +13,81 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "PVRClients.h"
 
+#include <cassert>
+#include <utility>
+#include <functional>
+
 #include "Application.h"
-#include "ApplicationMessenger.h"
-#include "GUIUserMessages.h"
+#include "cores/IPlayer.h"
+#include "dialogs/GUIDialogExtendedProgressBar.h"
 #include "dialogs/GUIDialogOK.h"
 #include "dialogs/GUIDialogSelect.h"
-#include "pvr/PVRManager.h"
-#include "pvr/PVRDatabase.h"
+#include "dialogs/GUIDialogKaiToast.h"
+#include "events/EventLog.h"
+#include "events/NotificationEvent.h"
 #include "guilib/GUIWindowManager.h"
-#include "settings/DisplaySettings.h"
-#include "settings/MediaSettings.h"
-#include "settings/Settings.h"
-#include "pvr/channels/PVRChannelGroups.h"
+#include "GUIUserMessages.h"
+#include "messaging/ApplicationMessenger.h"
 #include "pvr/channels/PVRChannelGroupInternal.h"
+#include "pvr/channels/PVRChannelGroups.h"
+#include "pvr/PVRManager.h"
 #include "pvr/recordings/PVRRecordings.h"
 #include "pvr/timers/PVRTimers.h"
-#include "cores/IPlayer.h"
+#include "settings/Settings.h"
+#include "utils/Variant.h"
 
-#ifdef HAS_VIDEO_PLAYBACK
-#include "cores/VideoRenderers/RenderManager.h"
-#endif
-
-using namespace std;
 using namespace ADDON;
 using namespace PVR;
 using namespace EPG;
+using namespace KODI::MESSAGING;
+
+/** number of iterations when scanning for add-ons. don't use a timer because the user may block in the dialog */
+#define PVR_CLIENT_AVAHI_SCAN_ITERATIONS   (20)
+/** sleep time in milliseconds when no auto-configured add-ons were found */
+#define PVR_CLIENT_AVAHI_SLEEP_TIME_MS     (250)
 
 CPVRClients::CPVRClients(void) :
-    CThread("PVRClient"),
     m_bChannelScanRunning(false),
     m_bIsSwitchingChannels(false),
-    m_bIsValidChannelSettings(false),
     m_playingClientId(-EINVAL),
     m_bIsPlayingLiveTV(false),
-    m_bIsPlayingRecording(false),
-    m_scanStart(0),
-    m_bNoAddonWarningDisplayed(false)
+    m_bIsPlayingRecording(false)
 {
 }
 
 CPVRClients::~CPVRClients(void)
 {
+  CAddonMgr::GetInstance().UnregisterAddonMgrCallback(ADDON_PVRDLL);
   Unload();
-}
-
-bool CPVRClients::IsInUse(const std::string& strAddonId) const
-{
-  CSingleLock lock(m_critSection);
-
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->Enabled() && itr->second->ID().Equals(strAddonId.c_str()))
-      return true;
-  return false;
 }
 
 void CPVRClients::Start(void)
 {
-  Stop();
+  CAddonMgr::GetInstance().RegisterAddonMgrCallback(ADDON_PVRDLL, this);
 
-  m_addonDb.Open();
-  Create();
-  SetPriority(-1);
+  UpdateAddons();
 }
 
-void CPVRClients::Stop(void)
-{
-  StopThread();
-  m_addonDb.Close();
-}
-
-bool CPVRClients::IsConnectedClient(int iClientId) const
+bool CPVRClients::IsCreatedClient(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client);
+  return GetCreatedClient(iClientId, client);
 }
 
-bool CPVRClients::IsConnectedClient(const AddonPtr addon)
+bool CPVRClients::IsCreatedClient(const AddonPtr addon)
 {
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->ID() == addon->ID())
-      return itr->second->ReadyToUse();
+  CSingleLock lock(m_critSection);
+
+  for (const auto &client : m_clientMap)
+    if (client.second->ID() == addon->ID())
+      return client.second->ReadyToUse();
   return false;
 }
 
@@ -107,17 +95,28 @@ int CPVRClients::GetClientId(const AddonPtr client) const
 {
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->ID() == client->ID())
-      return itr->first;
+  for (auto &entry : m_clientMap)
+  {
+    if (entry.second->ID() == client->ID())
+    {
+      return entry.first;
+    }
+  }
 
   return -1;
+}
+
+int CPVRClients::GetClientId(const std::string& strId) const
+{
+  CSingleLock lock(m_critSection);
+  std::map<std::string, int>::const_iterator it = m_addonNameIds.find(strId);
+  return it != m_addonNameIds.end() ? it->second : -1;
 }
 
 bool CPVRClients::GetClient(int iClientId, PVR_CLIENT &addon) const
 {
   bool bReturn(false);
-  if (iClientId <= PVR_INVALID_CLIENT_ID || iClientId == PVR_VIRTUAL_CLIENT_ID)
+  if (iClientId <= PVR_INVALID_CLIENT_ID)
     return bReturn;
 
   CSingleLock lock(m_critSection);
@@ -132,7 +131,7 @@ bool CPVRClients::GetClient(int iClientId, PVR_CLIENT &addon) const
   return bReturn;
 }
 
-bool CPVRClients::GetConnectedClient(int iClientId, PVR_CLIENT &addon) const
+bool CPVRClients::GetCreatedClient(int iClientId, PVR_CLIENT &addon) const
 {
   if (GetClient(iClientId, addon))
     return addon->ReadyToUse();
@@ -151,13 +150,7 @@ bool CPVRClients::RequestRemoval(AddonPtr addon)
 
 void CPVRClients::Unload(void)
 {
-  Stop();
-
   CSingleLock lock(m_critSection);
-
-  /* destroy all clients */
-  for (PVR_CLIENTMAP_ITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    itr->second->Destroy();
 
   /* reset class properties */
   m_bChannelScanRunning  = false;
@@ -165,6 +158,10 @@ void CPVRClients::Unload(void)
   m_bIsPlayingRecording  = false;
   m_strPlayingClientName = "";
 
+  for (const auto &client : m_clientMap)
+  {
+    client.second->Destroy();
+  }
   m_clientMap.clear();
 }
 
@@ -172,9 +169,9 @@ int CPVRClients::GetFirstConnectedClientID(void)
 {
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_ITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->ReadyToUse())
-      return itr->second->GetID();
+  for (const auto &client : m_clientMap)
+    if (client.second->ReadyToUse())
+      return client.second->GetID();
 
   return -1;
 }
@@ -184,8 +181,8 @@ int CPVRClients::EnabledClientAmount(void) const
   int iReturn(0);
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->Enabled())
+  for (const auto &client : m_clientMap)
+    if (!CAddonMgr::GetInstance().IsAddonDisabled(client.second->ID()))
       ++iReturn;
 
   return iReturn;
@@ -193,15 +190,18 @@ int CPVRClients::EnabledClientAmount(void) const
 
 bool CPVRClients::HasEnabledClients(void) const
 {
-  return EnabledClientAmount() > 0;
+  for (const auto &client : m_clientMap)
+    if (!CAddonMgr::GetInstance().IsAddonDisabled(client.second->ID()))
+      return true;
+  return false;
 }
 
 bool CPVRClients::StopClient(AddonPtr client, bool bRestart)
 {
-  CSingleLock lock(m_critSection);  
+  CSingleLock lock(m_critSection);
   int iId = GetClientId(client);
   PVR_CLIENT mappedClient;
-  if (GetConnectedClient(iId, mappedClient))
+  if (GetClient(iId, mappedClient))
   {
     if (bRestart)
       mappedClient->ReCreate();
@@ -214,49 +214,126 @@ bool CPVRClients::StopClient(AddonPtr client, bool bRestart)
   return false;
 }
 
-int CPVRClients::ConnectedClientAmount(void) const
+int CPVRClients::CreatedClientAmount(void) const
 {
   int iReturn(0);
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->ReadyToUse())
+  for (const auto &client : m_clientMap)
+    if (client.second->ReadyToUse())
       ++iReturn;
 
   return iReturn;
 }
 
-bool CPVRClients::HasConnectedClients(void) const
+bool CPVRClients::HasCreatedClients(void) const
 {
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
-    if (itr->second->ReadyToUse())
+  for (auto &client : m_clientMap)
+  {
+    if (client.second->ReadyToUse() && !client.second->IgnoreClient())
+    {
       return true;
+    }
+  }
 
   return false;
 }
 
-bool CPVRClients::GetClientName(int iClientId, CStdString &strName) const
+bool CPVRClients::GetClientFriendlyName(int iClientId, std::string &strName) const
 {
   bool bReturn(false);
   PVR_CLIENT client;
-  if ((bReturn = GetConnectedClient(iClientId, client)) == true)
+  if ((bReturn = GetCreatedClient(iClientId, client)) == true)
     strName = client->GetFriendlyName();
 
   return bReturn;
 }
 
-int CPVRClients::GetConnectedClients(PVR_CLIENTMAP &clients) const
+bool CPVRClients::GetClientAddonName(int iClientId, std::string &strName) const
+{
+  bool bReturn(false);
+  PVR_CLIENT client;
+  if ((bReturn = GetCreatedClient(iClientId, client)) == true)
+    strName = client->Name();
+
+  return bReturn;
+}
+
+bool CPVRClients::GetClientAddonIcon(int iClientId, std::string &strIcon) const
+{
+  bool bReturn(false);
+  PVR_CLIENT client;
+  if ((bReturn = GetCreatedClient(iClientId, client)) == true)
+    strIcon = client->Icon();
+
+  return bReturn;
+}
+
+std::vector<SBackend> CPVRClients::GetBackendProperties() const
+{
+  std::vector<SBackend> backendProperties;
+  std::vector<PVR_CLIENT> clients;
+
+  {
+    CSingleLock lock(m_critSection);
+
+    for (const auto &client : m_clientMap)
+    {
+      if (client.second)
+        clients.push_back(client.second);
+    }
+  }
+
+  for (const auto &client : clients)
+  {
+    if (!client->ReadyToUse())
+      continue;
+
+    SBackend properties;
+
+    if (client->GetDriveSpace(&properties.diskTotal, &properties.diskUsed) == PVR_ERROR_NO_ERROR)
+    {
+      properties.diskTotal *= 1024;  
+      properties.diskUsed *= 1024;
+    }
+
+    properties.numChannels = client->GetChannelsAmount();
+    properties.numTimers = client->GetTimersAmount();
+    properties.numRecordings = client->GetRecordingsAmount(false);
+    properties.numDeletedRecordings = client->GetRecordingsAmount(true);
+    properties.name = client->GetBackendName();
+    properties.version = client->GetBackendVersion();
+    properties.host = client->GetConnectionString();
+
+    backendProperties.push_back(properties);
+  }
+
+  return backendProperties;
+}
+
+std::string CPVRClients::GetClientAddonId(int iClientId) const
+{
+  PVR_CLIENT client;
+  return GetClient(iClientId, client) ?
+      client->ID() :
+      "";
+}
+
+int CPVRClients::GetCreatedClients(PVR_CLIENTMAP &clients) const
 {
   int iReturn(0);
   CSingleLock lock(m_critSection);
 
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
+  for (const auto &client : m_clientMap)
   {
-    if (itr->second->ReadyToUse())
+    if (client.second->ReadyToUse())
     {
-      clients.insert(std::make_pair(itr->second->GetID(), itr->second));
+      if (client.second->IgnoreClient())
+        continue;
+      
+      clients.insert(std::make_pair(client.second->GetID(), client.second));
       ++iReturn;
     }
   }
@@ -273,124 +350,127 @@ int CPVRClients::GetPlayingClientID(void) const
   return -EINVAL;
 }
 
-const CStdString CPVRClients::GetPlayingClientName(void) const
+const std::string CPVRClients::GetPlayingClientName(void) const
 {
   CSingleLock lock(m_critSection);
   return m_strPlayingClientName;
 }
 
-CStdString CPVRClients::GetStreamURL(const CPVRChannel &tag)
+std::string CPVRClients::GetStreamURL(const CPVRChannelPtr &channel)
 {
-  CStdString strReturn;
+  assert(channel.get());
+
+  std::string strReturn;
   PVR_CLIENT client;
-  if (GetConnectedClient(tag.ClientID(), client))
-    strReturn = client->GetLiveStreamURL(tag);
+  if (GetCreatedClient(channel->ClientID(), client))
+    strReturn = client->GetLiveStreamURL(channel);
   else
-    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, tag.ClientID());
+    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, channel->ClientID());
 
   return strReturn;
 }
 
-bool CPVRClients::SwitchChannel(const CPVRChannel &channel)
+bool CPVRClients::SwitchChannel(const CPVRChannelPtr &channel)
 {
+  assert(channel.get());
+
   {
     CSingleLock lock(m_critSection);
     if (m_bIsSwitchingChannels)
     {
-      CLog::Log(LOGDEBUG, "PVRClients - %s - can't switch to channel '%s'. waiting for the previous switch to complete", __FUNCTION__, channel.ChannelName().c_str());
+      CLog::Log(LOGDEBUG, "PVRClients - %s - can't switch to channel '%s'. waiting for the previous switch to complete", __FUNCTION__, channel->ChannelName().c_str());
       return false;
     }
     m_bIsSwitchingChannels = true;
   }
 
   bool bSwitchSuccessful(false);
-  CPVRChannelPtr currentChannel;
+  CPVRChannelPtr currentChannel(GetPlayingChannel());
   if (// no channel is currently playing
-      !GetPlayingChannel(currentChannel) ||
+      !currentChannel ||
       // different backend
-      currentChannel->ClientID() != channel.ClientID() ||
+      currentChannel->ClientID() != channel->ClientID() ||
       // stream URL should always be opened as a new file
-      !channel.StreamURL().IsEmpty() || !currentChannel->StreamURL().IsEmpty())
+      !channel->StreamURL().empty() || !currentChannel->StreamURL().empty())
   {
-    if (channel.StreamURL().IsEmpty())
+    if (channel->StreamURL().empty())
     {
       CloseStream();
       bSwitchSuccessful = OpenStream(channel, true);
     }
     else
     {
-      CFileItem m_currentFile(channel);
-      CApplicationMessenger::Get().PlayFile(m_currentFile, false);
+      CApplicationMessenger::GetInstance().PostMsg(TMSG_MEDIA_PLAY, 0, 0, static_cast<void*>(new CFileItem(channel)));
       bSwitchSuccessful = true;
     }
   }
   // same channel
-  else if (currentChannel.get() && *currentChannel == channel)
+  else if (currentChannel && currentChannel == channel)
   {
     bSwitchSuccessful = true;
   }
   else
   {
     PVR_CLIENT client;
-    if (GetConnectedClient(channel.ClientID(), client))
+    if (GetCreatedClient(channel->ClientID(), client))
       bSwitchSuccessful = client->SwitchChannel(channel);
   }
 
   {
     CSingleLock lock(m_critSection);
     m_bIsSwitchingChannels = false;
-    if (bSwitchSuccessful)
-      m_bIsValidChannelSettings = false;
   }
 
   if (!bSwitchSuccessful)
-    CLog::Log(LOGERROR, "PVR - %s - cannot switch to channel '%s' on client '%d'",__FUNCTION__, channel.ChannelName().c_str(), channel.ClientID());
+    CLog::Log(LOGERROR, "PVR - %s - cannot switch to channel '%s' on client '%d'",__FUNCTION__, channel->ChannelName().c_str(), channel->ClientID());
 
   return bSwitchSuccessful;
 }
 
-bool CPVRClients::GetPlayingChannel(CPVRChannelPtr &channel) const
+CPVRChannelPtr CPVRClients::GetPlayingChannel() const
 {
   PVR_CLIENT client;
   if (GetPlayingClient(client))
-    return client->GetPlayingChannel(channel);
-  return false;
+    return client->GetPlayingChannel();
+
+  return CPVRChannelPtr();
 }
 
-bool CPVRClients::GetPlayingRecording(CPVRRecording &recording) const
+CPVRRecordingPtr CPVRClients::GetPlayingRecording(void) const
 {
   PVR_CLIENT client;
-  if (GetPlayingClient(client))
-    return client->GetPlayingRecording(recording);
-  return false;
+  return GetPlayingClient(client) ? client->GetPlayingRecording() : CPVRRecordingPtr();
 }
 
 bool CPVRClients::HasTimerSupport(int iClientId)
 {
-  CSingleLock lock(m_critSection);
+  PVR_CLIENT client;
+  if (GetCreatedClient(iClientId, client))
+    return client->SupportsTimers();
 
-  return IsConnectedClient(iClientId) && m_clientMap[iClientId]->SupportsTimers();
+  return false;
 }
 
-PVR_ERROR CPVRClients::GetTimers(CPVRTimers *timers)
+bool CPVRClients::GetTimers(CPVRTimers *timers, std::vector<int> &failedClients)
 {
-  PVR_ERROR error(PVR_ERROR_NO_ERROR);
+  bool bSuccess(true);
   PVR_CLIENTMAP clients;
-  GetConnectedClients(clients);
+  GetCreatedClients(clients);
 
   /* get the timer list from each client */
-  for (PVR_CLIENTMAP_ITR itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+  for (const auto &client : clients)
   {
-    PVR_ERROR currentError = (*itrClients).second->GetTimers(timers);
+    PVR_ERROR currentError = client.second->GetTimers(timers);
     if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
         currentError != PVR_ERROR_NO_ERROR)
     {
-      CLog::Log(LOGERROR, "PVR - %s - cannot get timers from client '%d': %s",__FUNCTION__, (*itrClients).first, CPVRClient::ToString(currentError));
-      error = currentError;
+      CLog::Log(LOGERROR, "PVR - %s - cannot get timers from client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(currentError));
+      bSuccess = false;
+      failedClients.push_back(client.first);
     }
   }
 
-  return error;
+  return bSuccess;
 }
 
 PVR_ERROR CPVRClients::AddTimer(const CPVRTimerInfoTag &timer)
@@ -398,7 +478,7 @@ PVR_ERROR CPVRClients::AddTimer(const CPVRTimerInfoTag &timer)
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
 
   PVR_CLIENT client;
-  if (GetConnectedClient(timer.m_iClientId, client))
+  if (GetCreatedClient(timer.m_iClientId, client))
     error = client->AddTimer(timer);
 
   if (error != PVR_ERROR_NO_ERROR)
@@ -412,7 +492,7 @@ PVR_ERROR CPVRClients::UpdateTimer(const CPVRTimerInfoTag &timer)
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
 
   PVR_CLIENT client;
-  if (GetConnectedClient(timer.m_iClientId, client))
+  if (GetCreatedClient(timer.m_iClientId, client))
     error = client->UpdateTimer(timer);
 
   if (error != PVR_ERROR_NO_ERROR)
@@ -426,18 +506,18 @@ PVR_ERROR CPVRClients::DeleteTimer(const CPVRTimerInfoTag &timer, bool bForce)
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
   PVR_CLIENT client;
 
-  if (GetConnectedClient(timer.m_iClientId, client))
+  if (GetCreatedClient(timer.m_iClientId, client))
     error = client->DeleteTimer(timer, bForce);
 
   return error;
 }
 
-PVR_ERROR CPVRClients::RenameTimer(const CPVRTimerInfoTag &timer, const CStdString &strNewName)
+PVR_ERROR CPVRClients::RenameTimer(const CPVRTimerInfoTag &timer, const std::string &strNewName)
 {
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
 
   PVR_CLIENT client;
-  if (GetConnectedClient(timer.m_iClientId, client))
+  if (GetCreatedClient(timer.m_iClientId, client))
     error = client->RenameTimer(timer, strNewName);
 
   if (error != PVR_ERROR_NO_ERROR)
@@ -446,19 +526,60 @@ PVR_ERROR CPVRClients::RenameTimer(const CPVRTimerInfoTag &timer, const CStdStri
   return error;
 }
 
-PVR_ERROR CPVRClients::GetRecordings(CPVRRecordings *recordings)
+PVR_ERROR CPVRClients::GetTimerTypes(CPVRTimerTypes& results) const
 {
   PVR_ERROR error(PVR_ERROR_NO_ERROR);
-  PVR_CLIENTMAP clients;
-  GetConnectedClients(clients);
 
-  for (PVR_CLIENTMAP_ITR itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  for (const auto &clientEntry : clients)
   {
-    PVR_ERROR currentError = (*itrClients).second->GetRecordings(recordings);
+    CPVRTimerTypes types;
+    PVR_ERROR currentError = clientEntry.second->GetTimerTypes(types);
     if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
         currentError != PVR_ERROR_NO_ERROR)
     {
-      CLog::Log(LOGERROR, "PVR - %s - cannot get recordings from client '%d': %s",__FUNCTION__, (*itrClients).first, CPVRClient::ToString(currentError));
+      CLog::Log(LOGERROR, "PVR - %s - cannot get timer types from client '%d': %s",__FUNCTION__, clientEntry.first, CPVRClient::ToString(currentError));
+      error = currentError;
+    }
+    else
+    {
+      for (const auto &typesEntry : types)
+        results.push_back(typesEntry);
+    }
+  }
+
+  return error;
+}
+
+PVR_ERROR CPVRClients::GetTimerTypes(CPVRTimerTypes& results, int iClientId) const
+{
+  PVR_ERROR error(PVR_ERROR_UNKNOWN);
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(iClientId, client))
+    error = client->GetTimerTypes(results);
+
+  if (error != PVR_ERROR_NO_ERROR)
+    CLog::Log(LOGERROR, "PVR - %s - cannot get timer types from client '%d': %s",__FUNCTION__, iClientId, CPVRClient::ToString(error));
+
+  return error;
+}
+
+PVR_ERROR CPVRClients::GetRecordings(CPVRRecordings *recordings, bool deleted)
+{
+  PVR_ERROR error(PVR_ERROR_NO_ERROR);
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  for (const auto &client : clients)
+  {
+    PVR_ERROR currentError = client.second->GetRecordings(recordings, deleted);
+    if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
+        currentError != PVR_ERROR_NO_ERROR)
+    {
+      CLog::Log(LOGERROR, "PVR - %s - cannot get recordings from client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(currentError));
       error = currentError;
     }
   }
@@ -471,7 +592,7 @@ PVR_ERROR CPVRClients::RenameRecording(const CPVRRecording &recording)
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
 
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client))
+  if (GetCreatedClient(recording.m_iClientId, client))
     error = client->RenameRecording(recording);
 
   if (error != PVR_ERROR_NO_ERROR)
@@ -485,7 +606,7 @@ PVR_ERROR CPVRClients::DeleteRecording(const CPVRRecording &recording)
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
 
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client))
+  if (GetCreatedClient(recording.m_iClientId, client))
     error = client->DeleteRecording(recording);
 
   if (error != PVR_ERROR_NO_ERROR)
@@ -494,11 +615,84 @@ PVR_ERROR CPVRClients::DeleteRecording(const CPVRRecording &recording)
   return error;
 }
 
+PVR_ERROR CPVRClients::UndeleteRecording(const CPVRRecording &recording)
+{
+  PVR_ERROR error(PVR_ERROR_UNKNOWN);
+
+  if (!recording.IsDeleted())
+    return error;
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(recording.m_iClientId, client))
+    error = client->UndeleteRecording(recording);
+
+  if (error != PVR_ERROR_NO_ERROR)
+    CLog::Log(LOGERROR, "PVR - %s - cannot undelete recording from client '%d': %s",__FUNCTION__, recording.m_iClientId, CPVRClient::ToString(error));
+
+  return error;
+}
+
+PVR_ERROR CPVRClients::DeleteAllRecordingsFromTrash()
+{
+  PVR_ERROR error(PVR_ERROR_NO_ERROR);
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  std::vector<PVR_CLIENT> suppClients;
+  for (const auto client : clients)
+  {
+    if (client.second->SupportsRecordingsUndelete() && client.second->GetRecordingsAmount(true) > 0)
+      suppClients.push_back(client.second);
+  }
+
+  int selection = 0;
+  if (suppClients.size() > 1)
+  {
+    // have user select client
+    CGUIDialogSelect* pDialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
+    pDialog->Reset();
+    pDialog->SetHeading(CVariant{19292});       //Delete all permanently
+    pDialog->Add(g_localizeStrings.Get(24032)); // All Add-ons
+
+    for (const auto client : clients)
+    {
+      if (client.second->SupportsRecordingsUndelete() && client.second->GetRecordingsAmount(true) > 0)
+        pDialog->Add(client.second->GetBackendName());
+    }
+    pDialog->Open();
+    selection = pDialog->GetSelectedItem();
+  }
+
+  if (selection == 0)
+  {
+    for (const auto &client : suppClients)
+    {
+      PVR_ERROR currentError = client->DeleteAllRecordingsFromTrash();
+      if (currentError != PVR_ERROR_NO_ERROR)
+      {
+        CLog::Log(LOGERROR, "PVR - %s - cannot delete all recordings from client '%d': %s",__FUNCTION__, client->GetID(), CPVRClient::ToString(currentError));
+        error = currentError;
+      }
+    }
+  }
+  else if (selection >= 1 && selection <= (int)suppClients.size())
+  {
+    PVR_ERROR currentError = suppClients[selection-1]->DeleteAllRecordingsFromTrash();
+    if (currentError != PVR_ERROR_NO_ERROR)
+    {
+      CLog::Log(LOGERROR, "PVR - %s - cannot delete all recordings from client '%d': %s",__FUNCTION__, suppClients[selection-1]->GetID(), CPVRClient::ToString(currentError));
+      error = currentError;
+    }
+  }
+
+  return error;
+}
+
 bool CPVRClients::SetRecordingLastPlayedPosition(const CPVRRecording &recording, int lastplayedposition, PVR_ERROR *error)
 {
   *error = PVR_ERROR_UNKNOWN;
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client) && client->SupportsRecordings())
+  if (GetCreatedClient(recording.m_iClientId, client) && client->SupportsRecordings())
     *error = client->SetRecordingLastPlayedPosition(recording, lastplayedposition);
   else
     CLog::Log(LOGERROR, "PVR - %s - client %d does not support recordings",__FUNCTION__, recording.m_iClientId);
@@ -511,7 +705,7 @@ int CPVRClients::GetRecordingLastPlayedPosition(const CPVRRecording &recording)
   int rc = 0;
 
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client) && client->SupportsRecordings())
+  if (GetCreatedClient(recording.m_iClientId, client) && client->SupportsRecordings())
     rc = client->GetRecordingLastPlayedPosition(recording);
   else
     CLog::Log(LOGERROR, "PVR - %s - client %d does not support recordings",__FUNCTION__, recording.m_iClientId);
@@ -523,7 +717,7 @@ bool CPVRClients::SetRecordingPlayCount(const CPVRRecording &recording, int coun
 {
   *error = PVR_ERROR_UNKNOWN;
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client) && client->SupportsRecordingPlayCount())
+  if (GetCreatedClient(recording.m_iClientId, client) && client->SupportsRecordingPlayCount())
     *error = client->SetRecordingPlayCount(recording, count);
   else
     CLog::Log(LOGERROR, "PVR - %s - client %d does not support setting recording's play count",__FUNCTION__, recording.m_iClientId);
@@ -534,7 +728,7 @@ bool CPVRClients::SetRecordingPlayCount(const CPVRRecording &recording, int coun
 std::vector<PVR_EDL_ENTRY> CPVRClients::GetRecordingEdl(const CPVRRecording &recording)
 {
   PVR_CLIENT client;
-  if (GetConnectedClient(recording.m_iClientId, client) && client->SupportsRecordingEdl())
+  if (GetCreatedClient(recording.m_iClientId, client) && client->SupportsRecordingEdl())
     return client->GetRecordingEdl(recording);
   else
     CLog::Log(LOGERROR, "PVR - %s - client %d does not support getting Edl", __FUNCTION__, recording.m_iClientId);
@@ -544,16 +738,14 @@ std::vector<PVR_EDL_ENTRY> CPVRClients::GetRecordingEdl(const CPVRRecording &rec
 
 bool CPVRClients::IsRecordingOnPlayingChannel(void) const
 {
-  CPVRChannelPtr currentChannel;
-  return GetPlayingChannel(currentChannel) &&
-      currentChannel->IsRecording();
+  CPVRChannelPtr currentChannel(GetPlayingChannel());
+  return currentChannel && currentChannel->IsRecording();
 }
 
 bool CPVRClients::CanRecordInstantly(void)
 {
-  CPVRChannelPtr currentChannel;
-  return GetPlayingChannel(currentChannel) &&
-      currentChannel->CanRecord();
+  CPVRChannelPtr currentChannel(GetPlayingChannel());
+  return currentChannel && currentChannel->CanRecord();
 }
 
 bool CPVRClients::CanPauseStream(void) const
@@ -580,15 +772,36 @@ bool CPVRClients::CanSeekStream(void) const
   return false;
 }
 
-PVR_ERROR CPVRClients::GetEPGForChannel(const CPVRChannel &channel, CEpg *epg, time_t start, time_t end)
+PVR_ERROR CPVRClients::GetEPGForChannel(const CPVRChannelPtr &channel, CEpg *epg, time_t start, time_t end)
 {
+  assert(channel.get());
+
   PVR_ERROR error(PVR_ERROR_UNKNOWN);
   PVR_CLIENT client;
-  if (GetConnectedClient(channel.ClientID(), client))
+  if (GetCreatedClient(channel->ClientID(), client))
     error = client->GetEPGForChannel(channel, epg, start, end);
 
   if (error != PVR_ERROR_NO_ERROR)
-    CLog::Log(LOGERROR, "PVR - %s - cannot get EPG for channel '%s' from client '%d': %s",__FUNCTION__, channel.ChannelName().c_str(), channel.ClientID(), CPVRClient::ToString(error));
+    CLog::Log(LOGERROR, "PVR - %s - cannot get EPG for channel '%s' from client '%d': %s",__FUNCTION__, channel->ChannelName().c_str(), channel->ClientID(), CPVRClient::ToString(error));
+  return error;
+}
+
+PVR_ERROR CPVRClients::SetEPGTimeFrame(int iDays)
+{
+  PVR_ERROR error(PVR_ERROR_NO_ERROR);
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  for (const auto &client : clients)
+  {
+    PVR_ERROR currentError = client.second->SetEPGTimeFrame(iDays);
+    if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
+        currentError != PVR_ERROR_NO_ERROR)
+    {
+      error = currentError;
+      CLog::Log(LOGERROR, "PVR - %s - cannot set epg time frame for client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(error));
+    }
+  }
 
   return error;
 }
@@ -597,17 +810,17 @@ PVR_ERROR CPVRClients::GetChannels(CPVRChannelGroupInternal *group)
 {
   PVR_ERROR error(PVR_ERROR_NO_ERROR);
   PVR_CLIENTMAP clients;
-  GetConnectedClients(clients);
+  GetCreatedClients(clients);
 
   /* get the channel list from each client */
-  for (PVR_CLIENTMAP_ITR itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+  for (const auto &client : clients)
   {
-    PVR_ERROR currentError = (*itrClients).second->GetChannels(*group, group->IsRadio());
+    PVR_ERROR currentError = client.second->GetChannels(*group, group->IsRadio());
     if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
         currentError != PVR_ERROR_NO_ERROR)
     {
       error = currentError;
-      CLog::Log(LOGERROR, "PVR - %s - cannot get channels from client '%d': %s",__FUNCTION__, (*itrClients).first, CPVRClient::ToString(error));
+      CLog::Log(LOGERROR, "PVR - %s - cannot get channels from client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(error));
     }
   }
 
@@ -618,16 +831,16 @@ PVR_ERROR CPVRClients::GetChannelGroups(CPVRChannelGroups *groups)
 {
   PVR_ERROR error(PVR_ERROR_NO_ERROR);
   PVR_CLIENTMAP clients;
-  GetConnectedClients(clients);
+  GetCreatedClients(clients);
 
-  for (PVR_CLIENTMAP_ITR itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+  for (const auto &client : clients)
   {
-    PVR_ERROR currentError = (*itrClients).second->GetChannelGroups(groups);
+    PVR_ERROR currentError = client.second->GetChannelGroups(groups);
     if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
         currentError != PVR_ERROR_NO_ERROR)
     {
       error = currentError;
-      CLog::Log(LOGERROR, "PVR - %s - cannot get groups from client '%d': %s",__FUNCTION__, (*itrClients).first, CPVRClient::ToString(error));
+      CLog::Log(LOGERROR, "PVR - %s - cannot get groups from client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(error));
     }
   }
 
@@ -638,17 +851,17 @@ PVR_ERROR CPVRClients::GetChannelGroupMembers(CPVRChannelGroup *group)
 {
   PVR_ERROR error(PVR_ERROR_NO_ERROR);
   PVR_CLIENTMAP clients;
-  GetConnectedClients(clients);
+  GetCreatedClients(clients);
 
   /* get the member list from each client */
-  for (PVR_CLIENTMAP_ITR itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+  for (const auto &client : clients)
   {
-    PVR_ERROR currentError = (*itrClients).second->GetChannelGroupMembers(group);
+    PVR_ERROR currentError = client.second->GetChannelGroupMembers(group);
     if (currentError != PVR_ERROR_NOT_IMPLEMENTED &&
         currentError != PVR_ERROR_NO_ERROR)
     {
       error = currentError;
-      CLog::Log(LOGERROR, "PVR - %s - cannot get group members from client '%d': %s",__FUNCTION__, (*itrClients).first, CPVRClient::ToString(error));
+      CLog::Log(LOGERROR, "PVR - %s - cannot get group members from client '%d': %s",__FUNCTION__, client.first, CPVRClient::ToString(error));
     }
   }
 
@@ -661,36 +874,17 @@ bool CPVRClients::HasMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat)
     iClientID = GetPlayingClientID();
 
   PVR_CLIENT client;
-  return (GetConnectedClient(iClientID, client) &&
+  return (GetCreatedClient(iClientID, client) &&
       client->HaveMenuHooks(cat));
 }
 
-bool CPVRClients::GetMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat, PVR_MENUHOOKS *hooks)
+void CPVRClients::ProcessMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat, const CFileItem *item)
 {
-  bool bReturn(false);
-
-  if (iClientID < 0)
-    iClientID = GetPlayingClientID();
-
-  PVR_CLIENT client;
-  if (GetConnectedClient(iClientID, client) && client->HaveMenuHooks(cat))
-  {
-    *hooks = *(client->GetMenuHooks());
-    bReturn = true;
-  }
-
-  return bReturn;
-}
-
-void CPVRClients::ProcessMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat)
-{
-  PVR_MENUHOOKS *hooks = NULL;
-
   // get client id
   if (iClientID < 0 && cat == PVR_MENUHOOK_SETTING)
   {
     PVR_CLIENTMAP clients;
-    GetConnectedClients(clients);
+    GetCreatedClients(clients);
 
     if (clients.size() == 1)
     {
@@ -701,22 +895,20 @@ void CPVRClients::ProcessMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat)
       // have user select client
       CGUIDialogSelect* pDialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
       pDialog->Reset();
-      pDialog->SetHeading(19196);
+      pDialog->SetHeading(CVariant{19196});
 
-      PVR_CLIENTMAP_ITR itrClients;
-      for (itrClients = clients.begin(); itrClients != clients.end(); itrClients++)
+      for (const auto client : clients)
       {
-        pDialog->Add(itrClients->second->GetBackendName());
+        pDialog->Add(client.second->GetBackendName());
       }
-      pDialog->DoModal();
+      pDialog->Open();
 
-      int selection = pDialog->GetSelectedLabel();
+      int selection = pDialog->GetSelectedItem();
       if (selection >= 0)
       {
-        itrClients = clients.begin();
-        for (int i = 0; i < selection; i++)
-          itrClients++;
-        iClientID = itrClients->first;
+        auto client = clients.begin();
+        std::advance(client, selection);
+        iClientID = client->first;
       }
     }
   }
@@ -725,21 +917,30 @@ void CPVRClients::ProcessMenuHooks(int iClientID, PVR_MENUHOOK_CAT cat)
     iClientID = GetPlayingClientID();
 
   PVR_CLIENT client;
-  if (GetConnectedClient(iClientID, client) && client->HaveMenuHooks(cat))
+  if (GetCreatedClient(iClientID, client) && client->HaveMenuHooks(cat))
   {
-    hooks = client->GetMenuHooks();
+    PVR_MENUHOOKS *hooks = client->GetMenuHooks();
     std::vector<int> hookIDs;
+    int selection = 0;
 
     CGUIDialogSelect* pDialog = (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
     pDialog->Reset();
-    pDialog->SetHeading(19196);
-    for (unsigned int i = 0; i < hooks->size(); i++)
-      pDialog->Add(client->GetString(hooks->at(i).iLocalizedStringId));
-    pDialog->DoModal();
-
-    int selection = pDialog->GetSelectedLabel();
+    pDialog->SetHeading(CVariant{19196});
+    for (unsigned int i = 0; i < hooks->size(); ++i)
+    {
+      if (hooks->at(i).category == cat || hooks->at(i).category == PVR_MENUHOOK_ALL)
+      {
+        pDialog->Add(g_localizeStrings.GetAddonString(client->ID(), hooks->at(i).iLocalizedStringId));
+        hookIDs.push_back(i);
+      }
+    }
+    if (hookIDs.size() > 1)
+    {
+      pDialog->Open();
+      selection = pDialog->GetSelectedItem();
+    }
     if (selection >= 0)
-      client->CallMenuHook(hooks->at(selection));
+      client->CallMenuHook(hooks->at(hookIDs.at(selection)), item);
   }
 }
 
@@ -749,16 +950,16 @@ bool CPVRClients::IsRunningChannelScan(void) const
   return m_bChannelScanRunning;
 }
 
-vector<PVR_CLIENT> CPVRClients::GetClientsSupportingChannelScan(void) const
+std::vector<PVR_CLIENT> CPVRClients::GetClientsSupportingChannelScan(void) const
 {
-  vector<PVR_CLIENT> possibleScanClients;
+  std::vector<PVR_CLIENT> possibleScanClients;
   CSingleLock lock(m_critSection);
 
   /* get clients that support channel scanning */
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
+  for (const auto &client : m_clientMap)
   {
-    if (itr->second->ReadyToUse() && itr->second->SupportsChannelScan())
-      possibleScanClients.push_back(itr->second);
+    if (client.second->ReadyToUse() && client.second->SupportsChannelScan())
+      possibleScanClients.push_back(client.second);
   }
 
   return possibleScanClients;
@@ -768,7 +969,7 @@ void CPVRClients::StartChannelScan(void)
 {
   PVR_CLIENT scanClient;
   CSingleLock lock(m_critSection);
-  vector<PVR_CLIENT> possibleScanClients = GetClientsSupportingChannelScan();
+  std::vector<PVR_CLIENT> possibleScanClients = GetClientsSupportingChannelScan();
   m_bChannelScanRunning = true;
 
   /* multiple clients found */
@@ -777,14 +978,14 @@ void CPVRClients::StartChannelScan(void)
     CGUIDialogSelect* pDialog= (CGUIDialogSelect*)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
 
     pDialog->Reset();
-    pDialog->SetHeading(19119);
+    pDialog->SetHeading(CVariant{19119});
 
-    for (unsigned int i = 0; i < possibleScanClients.size(); i++)
-      pDialog->Add(possibleScanClients[i]->GetFriendlyName());
+    for (const auto client : possibleScanClients)
+      pDialog->Add(client->GetFriendlyName());
 
-    pDialog->DoModal();
+    pDialog->Open();
 
-    int selection = pDialog->GetSelectedLabel();
+    int selection = pDialog->GetSelectedItem();
     if (selection >= 0)
       scanClient = possibleScanClients[selection];
   }
@@ -796,7 +997,7 @@ void CPVRClients::StartChannelScan(void)
   /* no clients found */
   else if (!scanClient)
   {
-    CGUIDialogOK::ShowAndGetInput(19033,0,19192,0);
+    CGUIDialogOK::ShowAndGetInput(CVariant{19033}, CVariant{19192});
     return;
   }
 
@@ -805,20 +1006,101 @@ void CPVRClients::StartChannelScan(void)
       __FUNCTION__, scanClient->GetFriendlyName().c_str());
   long perfCnt = XbmcThreads::SystemClockMillis();
 
-  /* stop the supervisor thread */
-  g_PVRManager.StopUpdateThreads();
-
   /* do the scan */
   if (scanClient->StartChannelScan() != PVR_ERROR_NO_ERROR)
     /* an error occured */
-    CGUIDialogOK::ShowAndGetInput(19111,0,19193,0);
-
-  /* restart the supervisor thread */
-  g_PVRManager.StartUpdateThreads();
+    CGUIDialogOK::ShowAndGetInput(CVariant{19111}, CVariant{19193});
 
   CLog::Log(LOGNOTICE, "PVRManager - %s - channel scan finished after %li.%li seconds",
       __FUNCTION__, (XbmcThreads::SystemClockMillis()-perfCnt)/1000, (XbmcThreads::SystemClockMillis()-perfCnt)%1000);
   m_bChannelScanRunning = false;
+}
+
+std::vector<PVR_CLIENT> CPVRClients::GetClientsSupportingChannelSettings(bool bRadio) const
+{
+  std::vector<PVR_CLIENT> possibleSettingsClients;
+  CSingleLock lock(m_critSection);
+
+  /* get clients that support channel settings */
+  for (const auto &client : m_clientMap)
+  {
+    if (client.second->ReadyToUse() && client.second->SupportsChannelSettings() &&
+         ((bRadio && client.second->SupportsRadio()) || (!bRadio && client.second->SupportsTV())))
+      possibleSettingsClients.push_back(client.second);
+  }
+
+  return possibleSettingsClients;
+}
+
+
+bool CPVRClients::OpenDialogChannelAdd(const CPVRChannelPtr &channel)
+{
+  PVR_ERROR error = PVR_ERROR_UNKNOWN;
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(channel->ClientID(), client))
+    error = client->OpenDialogChannelAdd(channel);
+  else
+    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, channel->ClientID());
+
+  if (error == PVR_ERROR_NOT_IMPLEMENTED)
+  {
+    CGUIDialogOK::ShowAndGetInput(CVariant{19033}, CVariant{19038});
+    return true;
+  }
+
+  return error == PVR_ERROR_NO_ERROR;
+}
+
+bool CPVRClients::OpenDialogChannelSettings(const CPVRChannelPtr &channel)
+{
+  PVR_ERROR error = PVR_ERROR_UNKNOWN;
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(channel->ClientID(), client))
+    error = client->OpenDialogChannelSettings(channel);
+  else
+    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, channel->ClientID());
+
+  if (error == PVR_ERROR_NOT_IMPLEMENTED)
+  {
+    CGUIDialogOK::ShowAndGetInput(CVariant{19033}, CVariant{19038});
+    return true;
+  }
+
+  return error == PVR_ERROR_NO_ERROR;
+}
+
+bool CPVRClients::DeleteChannel(const CPVRChannelPtr &channel)
+{
+  PVR_ERROR error = PVR_ERROR_UNKNOWN;
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(channel->ClientID(), client))
+    error = client->DeleteChannel(channel);
+  else
+    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, channel->ClientID());
+
+  if (error == PVR_ERROR_NOT_IMPLEMENTED)
+  {
+    CGUIDialogOK::ShowAndGetInput(CVariant{19033}, CVariant{19038});
+    return true;
+  }
+
+  return error == PVR_ERROR_NO_ERROR;
+}
+
+bool CPVRClients::RenameChannel(const CPVRChannelPtr &channel)
+{
+  PVR_ERROR error = PVR_ERROR_UNKNOWN;
+
+  PVR_CLIENT client;
+  if (GetCreatedClient(channel->ClientID(), client))
+    error = client->RenameChannel(channel);
+  else
+    CLog::Log(LOGERROR, "PVR - %s - cannot find client %d",__FUNCTION__, channel->ClientID());
+
+  return (error == PVR_ERROR_NO_ERROR || error == PVR_ERROR_NOT_IMPLEMENTED);
 }
 
 bool CPVRClients::IsKnownClient(const AddonPtr client) const
@@ -827,358 +1109,92 @@ bool CPVRClients::IsKnownClient(const AddonPtr client) const
   return GetClientId(client) > 0;
 }
 
-int CPVRClients::RegisterClient(AddonPtr client)
+void CPVRClients::UpdateAddons(void)
 {
-  int iClientId(-1);
-  if (!client->Enabled())
-    return -1;
+  VECADDONS addons;
+  CAddonMgr::GetInstance().GetInstalledAddons(addons, ADDON_PVRDLL);
 
-  CLog::Log(LOGDEBUG, "%s - registering add-on '%s'", __FUNCTION__, client->Name().c_str());
+  if (addons.empty())
+    return;
 
-  CPVRDatabase *database = GetPVRDatabase();
-  if (!database)
-    return -1;
-
-  // check whether we already know this client
-  iClientId = database->GetClientId(client->ID());
-
-  // try to register the new client in the db
-  if (iClientId < 0 && (iClientId = database->Persist(client)) < 0)
+  for (auto &addon : addons)
   {
-    CLog::Log(LOGERROR, "PVR - %s - can't add client '%s' to the database", __FUNCTION__, client->Name().c_str());
-    return -1;
-  }
+    bool bEnabled = !CAddonMgr::GetInstance().IsAddonDisabled(addon->ID());
 
-  PVR_CLIENT addon;
-  // load and initialise the client libraries
-  {
-    CSingleLock lock(m_critSection);
-    PVR_CLIENTMAP_ITR existingClient = m_clientMap.find(iClientId);
-    if (existingClient != m_clientMap.end())
+    if (bEnabled && (!IsKnownClient(addon) || !IsCreatedClient(addon)))
     {
-      // return existing client
-      addon = existingClient->second;
-    }
-    else
-    {
-      // create a new client instance
-      addon = boost::dynamic_pointer_cast<CPVRClient>(client);
-      m_clientMap.insert(std::make_pair(iClientId, addon));
-    }
-  }
-
-  if (iClientId < 0)
-    CLog::Log(LOGERROR, "PVR - %s - can't register add-on '%s'", __FUNCTION__, client->Name().c_str());
-
-  return iClientId;
-}
-
-bool CPVRClients::UpdateAndInitialiseClients(bool bInitialiseAllClients /* = false */)
-{
-  bool bReturn(true);
-  ADDON::VECADDONS map;
-  ADDON::VECADDONS disableAddons;
-  {
-    CSingleLock lock(m_critSection);
-    map = m_addons;
-  }
-
-  if (map.size() == 0)
-    return false;
-
-  for (unsigned iClientPtr = 0; iClientPtr < map.size(); iClientPtr++)
-  {
-    const AddonPtr clientAddon = map.at(iClientPtr);
-    bool bEnabled = clientAddon->Enabled() &&
-        !m_addonDb.IsAddonDisabled(clientAddon->ID());
-
-    if (!bEnabled && IsKnownClient(clientAddon))
-    {
-      CSingleLock lock(m_critSection);
-      /* stop the client and remove it from the db */
-      StopClient(clientAddon, false);
-      ADDON::VECADDONS::iterator addonPtr = std::find(m_addons.begin(), m_addons.end(), clientAddon);
-      if (addonPtr != m_addons.end())
-        m_addons.erase(addonPtr);
-
-    }
-    else if (bEnabled && (bInitialiseAllClients || !IsKnownClient(clientAddon) || !IsConnectedClient(clientAddon)))
-    {
-      bool bDisabled(false);
-
-      // register the add-on in the pvr db, and create the CPVRClient instance
-      int iClientId = RegisterClient(clientAddon);
+      std::hash<std::string> hasher;
+      int iClientId = static_cast<int>(hasher(addon->ID()));
       if (iClientId < 0)
+        iClientId = -iClientId;
+
+      ADDON_STATUS status;
+      if (IsKnownClient(addon))
       {
-        // failed to register or create the add-on, disable it
-        CLog::Log(LOGWARNING, "%s - failed to register add-on %s, disabling it", __FUNCTION__, clientAddon->Name().c_str());
-        disableAddons.push_back(clientAddon);
-        bDisabled = true;
+        PVR_CLIENT client;
+        GetClient(iClientId, client);
+        status = client->Create(iClientId);
       }
       else
       {
-        ADDON_STATUS status(ADDON_STATUS_UNKNOWN);
-        PVR_CLIENT addon;
+        PVR_CLIENT pvrclient = std::dynamic_pointer_cast<CPVRClient>(addon);
+        if (!pvrclient)
         {
-          CSingleLock lock(m_critSection);
-          if (!GetClient(iClientId, addon))
-          {
-            CLog::Log(LOGWARNING, "%s - failed to find add-on %s, disabling it", __FUNCTION__, clientAddon->Name().c_str());
-            disableAddons.push_back(clientAddon);
-            bDisabled = true;
-          }
+          CLog::Log(LOGERROR, "CPVRClients - %s - severe error, incorrect add-on type", __FUNCTION__);
+          continue;
         }
-
-        // throttle connection attempts, no more than 1 attempt per 5 seconds
-        if (!bDisabled && addon->Enabled())
+        status = pvrclient.get()->Create(iClientId);
+        // register the add-on
+        if (m_clientMap.find(iClientId) == m_clientMap.end())
         {
-          time_t now;
-          CDateTime::GetCurrentDateTime().GetAsTime(now);
-          std::map<int, time_t>::iterator it = m_connectionAttempts.find(iClientId);
-          if (it != m_connectionAttempts.end() && now < it->second)
-            continue;
-          m_connectionAttempts[iClientId] = now + 5;
-        }
-
-        // re-check the enabled status. newly installed clients get disabled when they're added to the db
-        if (!bDisabled && addon->Enabled() && (status = addon->Create(iClientId)) != ADDON_STATUS_OK)
-        {
-          CLog::Log(LOGWARNING, "%s - failed to create add-on %s, status = %d", __FUNCTION__, clientAddon->Name().c_str(), status);
-          if (!addon.get() || !addon->DllLoaded() || status == ADDON_STATUS_PERMANENT_FAILURE)
-          {
-            // failed to load the dll of this add-on, disable it
-            CLog::Log(LOGWARNING, "%s - failed to load the dll for add-on %s, disabling it", __FUNCTION__, clientAddon->Name().c_str());
-            disableAddons.push_back(clientAddon);
-            bDisabled = true;
-          }
+          m_clientMap.insert(std::make_pair(iClientId, pvrclient));
+          m_addonNameIds.insert(make_pair(addon->ID(), iClientId));
         }
       }
 
-      if (bDisabled && (g_PVRManager.GetState() == ManagerStateStarted || g_PVRManager.GetState() == ManagerStateStarting))
-        CGUIDialogOK::ShowAndGetInput(24070, 24071, 16029, 0);
+      if (status != ADDON_STATUS_OK)
+      {
+        CLog::Log(LOGERROR, "%s - failed to create add-on %s, status = %d", __FUNCTION__, addon->Name().c_str(), status);
+        if (status == ADDON_STATUS_PERMANENT_FAILURE)
+        {
+          CGUIDialogOK::ShowAndGetInput(CVariant{24070}, CVariant{16029});
+          CAddonMgr::GetInstance().DisableAddon(addon->ID());
+        }
+      }
     }
-  }
-
-  // disable add-ons that failed to initialise
-  if (disableAddons.size() > 0)
-  {
-    CSingleLock lock(m_critSection);
-    for (ADDON::VECADDONS::iterator it = disableAddons.begin(); it != disableAddons.end(); it++)
+    else if (IsCreatedClient(addon))
     {
-      // disable in the add-on db
-      m_addonDb.DisableAddon((*it)->ID(), true);
-
-      // remove from the pvr add-on list
-      ADDON::VECADDONS::iterator addonPtr = std::find(m_addons.begin(), m_addons.end(), *it);
-      if (addonPtr != m_addons.end())
-        m_addons.erase(addonPtr);
+      // stop add-on if it's no longer enabled, restart add-on if it's still enabled
+      StopClient(addon, bEnabled);
     }
   }
 
-  return bReturn;
+  g_PVRManager.Start();
 }
 
-void CPVRClients::Process(void)
-{
-  bool bCheckedEnabledClientsOnStartup(false);
-
-  CAddonMgr::Get().RegisterAddonMgrCallback(ADDON_PVRDLL, this);
-  CAddonMgr::Get().RegisterObserver(this);
-
-  UpdateAddons();
-
-  while (!g_application.m_bStop && !m_bStop)
-  {
-    UpdateAndInitialiseClients();
-
-    if (!bCheckedEnabledClientsOnStartup)
-    {
-      bCheckedEnabledClientsOnStartup = true;
-      if (!HasEnabledClients() && !m_bNoAddonWarningDisplayed)
-        ShowDialogNoClientsEnabled();
-    }
-
-    PVR_CLIENT client;
-    if (GetPlayingClient(client))
-      client->UpdateCharInfoSignalStatus();
-    Sleep(1000);
-  }
-}
-
-void CPVRClients::ShowDialogNoClientsEnabled(void)
-{
-  if (g_PVRManager.GetState() != ManagerStateStarted && g_PVRManager.GetState() != ManagerStateStarting)
-    return;
-
-  CGUIDialogOK::ShowAndGetInput(19240, 19241, 19242, 19243);
-
-  vector<CStdString> params;
-  params.push_back("addons://disabled/xbmc.pvrclient");
-  params.push_back("return");
-  g_windowManager.ActivateWindow(WINDOW_ADDON_BROWSER, params);
-}
-
-void CPVRClients::SaveCurrentChannelSettings(void)
-{
-  CPVRChannelPtr channel;
-  {
-    CSingleLock lock(m_critSection);
-    if (!GetPlayingChannel(channel) || !m_bIsValidChannelSettings)
-      return;
-  }
-
-  CPVRDatabase *database = GetPVRDatabase();
-  if (!database)
-    return;
-
-  if (CMediaSettings::Get().GetCurrentVideoSettings() != CMediaSettings::Get().GetDefaultVideoSettings())
-  {
-    CLog::Log(LOGDEBUG, "PVR - %s - persisting custom channel settings for channel '%s'",
-        __FUNCTION__, channel->ChannelName().c_str());
-    database->PersistChannelSettings(*channel, CMediaSettings::Get().GetCurrentVideoSettings());
-  }
-  else
-  {
-    CLog::Log(LOGDEBUG, "PVR - %s - no custom channel settings for channel '%s'",
-        __FUNCTION__, channel->ChannelName().c_str());
-    database->DeleteChannelSettings(*channel);
-  }
-}
-
-void CPVRClients::LoadCurrentChannelSettings(void)
-{
-  CPVRChannelPtr channel;
-  {
-    CSingleLock lock(m_critSection);
-    if (!GetPlayingChannel(channel))
-      return;
-  }
-
-  CPVRDatabase *database = GetPVRDatabase();
-  if (!database)
-    return;
-
-  if (g_application.m_pPlayer)
-  {
-    /* set the default settings first */
-    CVideoSettings loadedChannelSettings = CMediaSettings::Get().GetDefaultVideoSettings();
-
-    /* try to load the settings from the database */
-    database->GetChannelSettings(*channel, loadedChannelSettings);
-
-    CMediaSettings::Get().GetCurrentVideoSettings() = CMediaSettings::Get().GetDefaultVideoSettings();
-    CMediaSettings::Get().GetCurrentVideoSettings().m_Brightness          = loadedChannelSettings.m_Brightness;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_Contrast            = loadedChannelSettings.m_Contrast;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_Gamma               = loadedChannelSettings.m_Gamma;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_Crop                = loadedChannelSettings.m_Crop;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CropLeft            = loadedChannelSettings.m_CropLeft;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CropRight           = loadedChannelSettings.m_CropRight;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CropTop             = loadedChannelSettings.m_CropTop;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CropBottom          = loadedChannelSettings.m_CropBottom;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CustomPixelRatio    = loadedChannelSettings.m_CustomPixelRatio;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CustomZoomAmount    = loadedChannelSettings.m_CustomZoomAmount;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CustomVerticalShift = loadedChannelSettings.m_CustomVerticalShift;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_NoiseReduction      = loadedChannelSettings.m_NoiseReduction;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_Sharpness           = loadedChannelSettings.m_Sharpness;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_InterlaceMethod     = loadedChannelSettings.m_InterlaceMethod;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_OutputToAllSpeakers = loadedChannelSettings.m_OutputToAllSpeakers;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_AudioDelay          = loadedChannelSettings.m_AudioDelay;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_AudioStream         = loadedChannelSettings.m_AudioStream;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleOn          = loadedChannelSettings.m_SubtitleOn;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleDelay       = loadedChannelSettings.m_SubtitleDelay;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_CustomNonLinStretch = loadedChannelSettings.m_CustomNonLinStretch;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_ScalingMethod       = loadedChannelSettings.m_ScalingMethod;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_PostProcess         = loadedChannelSettings.m_PostProcess;
-    CMediaSettings::Get().GetCurrentVideoSettings().m_DeinterlaceMode     = loadedChannelSettings.m_DeinterlaceMode;
-
-    /* only change the view mode if it's different */
-    if (CMediaSettings::Get().GetCurrentVideoSettings().m_ViewMode != loadedChannelSettings.m_ViewMode)
-    {
-      CMediaSettings::Get().GetCurrentVideoSettings().m_ViewMode = loadedChannelSettings.m_ViewMode;
-
-      g_renderManager.SetViewMode(CMediaSettings::Get().GetCurrentVideoSettings().m_ViewMode);
-      CMediaSettings::Get().GetCurrentVideoSettings().m_CustomZoomAmount = CDisplaySettings::Get().GetZoomAmount();
-      CMediaSettings::Get().GetCurrentVideoSettings().m_CustomPixelRatio = CDisplaySettings::Get().GetPixelRatio();
-    }
-
-    /* only change the subtitle stream, if it's different */
-    if (CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleStream != loadedChannelSettings.m_SubtitleStream)
-    {
-      CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleStream = loadedChannelSettings.m_SubtitleStream;
-
-      g_application.m_pPlayer->SetSubtitle(CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleStream);
-    }
-
-    /* only change the audio stream if it's different */
-    if (g_application.m_pPlayer->GetAudioStream() != CMediaSettings::Get().GetCurrentVideoSettings().m_AudioStream &&
-        CMediaSettings::Get().GetCurrentVideoSettings().m_AudioStream >= 0)
-      g_application.m_pPlayer->SetAudioStream(CMediaSettings::Get().GetCurrentVideoSettings().m_AudioStream);
-
-    g_application.m_pPlayer->SetAVDelay(CMediaSettings::Get().GetCurrentVideoSettings().m_AudioDelay);
-    g_application.m_pPlayer->SetDynamicRangeCompression((long)(CMediaSettings::Get().GetCurrentVideoSettings().m_VolumeAmplification * 100));
-    g_application.m_pPlayer->SetSubtitleVisible(CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleOn);
-    g_application.m_pPlayer->SetSubTitleDelay(CMediaSettings::Get().GetCurrentVideoSettings().m_SubtitleDelay);
-
-    /* settings can be saved on next channel switch */
-    m_bIsValidChannelSettings = true;
-  }
-}
-
-bool CPVRClients::UpdateAddons(void)
-{
-  ADDON::VECADDONS addons;
-  bool bReturn(CAddonMgr::Get().GetAddons(ADDON_PVRDLL, addons, true));
-
-  if (bReturn)
-  {
-    CSingleLock lock(m_critSection);
-    m_addons = addons;
-  }
-  
-  // handle "new" addons which aren't yet in the db - these have to be added first
-  for (unsigned iClientPtr = 0; iClientPtr < m_addons.size(); iClientPtr++)
-  {
-    const AddonPtr clientAddon = m_addons.at(iClientPtr);
-  
-    if (!m_addonDb.HasAddon(clientAddon->ID()))
-    {
-      m_addonDb.AddAddon(clientAddon, -1);
-    }
-  }
-
-  if ((!bReturn || addons.size() == 0) && !m_bNoAddonWarningDisplayed &&
-      !CAddonMgr::Get().HasAddons(ADDON_PVRDLL, false) &&
-      (g_PVRManager.GetState() == ManagerStateStarted || g_PVRManager.GetState() == ManagerStateStarting))
-  {
-    // No PVR add-ons could be found
-    // You need a tuner, backend software, and an add-on for the backend to be able to use PVR.
-    // Please visit xbmc.org/pvr to learn more.
-    m_bNoAddonWarningDisplayed = true;
-    CSettings::Get().SetBool("pvrmanager.enabled", false);
-    CGUIDialogOK::ShowAndGetInput(19271, 19272, 19273, 19274);
-    CGUIMessage msg(GUI_MSG_UPDATE, WINDOW_SETTINGS_MYPVR, 0);
-    g_windowManager.SendThreadMessage(msg, WINDOW_SETTINGS_MYPVR);
-  }
-
-  return bReturn;
-}
-
-void CPVRClients::Notify(const Observable &obs, const ObservableMessage msg)
-{
-  if (msg == ObservableMessageAddons)
-    UpdateAddons();
-}
-
-bool CPVRClients::GetClient(const CStdString &strId, ADDON::AddonPtr &addon) const
+bool CPVRClients::GetClient(const std::string &strId, AddonPtr &addon) const
 {
   CSingleLock lock(m_critSection);
-  for (PVR_CLIENTMAP_CITR itr = m_clientMap.begin(); itr != m_clientMap.end(); itr++)
+  for (const auto &client : m_clientMap)
   {
-    if (itr->second->ID() == strId)
+    if (client.second->ID() == strId)
     {
-      addon = itr->second;
+      addon = client.second;
       return true;
     }
+  }
+  return false;
+}
+
+bool CPVRClients::SupportsTimers() const
+{
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  for (const auto &entry : clients)
+  {
+    if (entry.second->SupportsTimers())
+      return true;
   }
   return false;
 }
@@ -1186,103 +1202,109 @@ bool CPVRClients::GetClient(const CStdString &strId, ADDON::AddonPtr &addon) con
 bool CPVRClients::SupportsChannelGroups(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsChannelGroups();
+  return GetCreatedClient(iClientId, client) && client->SupportsChannelGroups();
 }
 
 bool CPVRClients::SupportsChannelScan(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsChannelScan();
+  return GetCreatedClient(iClientId, client) && client->SupportsChannelScan();
+}
+
+bool CPVRClients::SupportsChannelSettings(int iClientId) const
+{
+  PVR_CLIENT client;
+  return GetCreatedClient(iClientId, client) && client->SupportsChannelSettings();
 }
 
 bool CPVRClients::SupportsEPG(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsEPG();
+  return GetCreatedClient(iClientId, client) && client->SupportsEPG();
 }
 
 bool CPVRClients::SupportsLastPlayedPosition(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsLastPlayedPosition();
+  return GetCreatedClient(iClientId, client) && client->SupportsLastPlayedPosition();
 }
 
 bool CPVRClients::SupportsRadio(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsRadio();
+  return GetCreatedClient(iClientId, client) && client->SupportsRadio();
 }
 
 bool CPVRClients::SupportsRecordings(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsRecordings();
+  return GetCreatedClient(iClientId, client) && client->SupportsRecordings();
 }
 
-bool CPVRClients::SupportsRecordingFolders(int iClientId) const
+bool CPVRClients::SupportsRecordingsUndelete(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsRecordingFolders();
+  return GetCreatedClient(iClientId, client) && client->SupportsRecordingsUndelete();
 }
 
 bool CPVRClients::SupportsRecordingPlayCount(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsRecordingPlayCount();
+  return GetCreatedClient(iClientId, client) && client->SupportsRecordingPlayCount();
 }
 
 bool CPVRClients::SupportsRecordingEdl(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsRecordingEdl();
+  return GetCreatedClient(iClientId, client) && client->SupportsRecordingEdl();
 }
 
 bool CPVRClients::SupportsTimers(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsTimers();
+  return GetCreatedClient(iClientId, client) && client->SupportsTimers();
 }
 
 bool CPVRClients::SupportsTV(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->SupportsTV();
+  return GetCreatedClient(iClientId, client) && client->SupportsTV();
 }
 
 bool CPVRClients::HandlesDemuxing(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->HandlesDemuxing();
+  return GetCreatedClient(iClientId, client) && client->HandlesDemuxing();
 }
 
 bool CPVRClients::HandlesInputStream(int iClientId) const
 {
   PVR_CLIENT client;
-  return GetConnectedClient(iClientId, client) && client->HandlesInputStream();
+  return GetCreatedClient(iClientId, client) && client->HandlesInputStream();
 }
 
 bool CPVRClients::GetPlayingClient(PVR_CLIENT &client) const
 {
-  return GetConnectedClient(GetPlayingClientID(), client);
+  return GetCreatedClient(GetPlayingClientID(), client);
 }
 
-bool CPVRClients::OpenStream(const CPVRChannel &tag, bool bIsSwitchingChannel)
+bool CPVRClients::OpenStream(const CPVRChannelPtr &channel, bool bIsSwitchingChannel)
 {
+  assert(channel.get());
+
   bool bReturn(false);
   CloseStream();
 
   /* try to open the stream on the client */
   PVR_CLIENT client;
-  if (GetConnectedClient(tag.ClientID(), client) &&
-      client->OpenStream(tag, bIsSwitchingChannel))
+  if (GetCreatedClient(channel->ClientID(), client) &&
+      client->OpenStream(channel, bIsSwitchingChannel))
   {
     CSingleLock lock(m_critSection);
-    m_playingClientId = tag.ClientID();
+    m_playingClientId = channel->ClientID();
     m_bIsPlayingLiveTV = true;
 
-    if (tag.ClientID() == PVR_VIRTUAL_CLIENT_ID)
-      m_strPlayingClientName = g_localizeStrings.Get(19209);
-    else if (!tag.IsVirtual() && client.get())
+    if (client.get())
       m_strPlayingClientName = client->GetFriendlyName();
     else
       m_strPlayingClientName = g_localizeStrings.Get(13205);
@@ -1293,18 +1315,20 @@ bool CPVRClients::OpenStream(const CPVRChannel &tag, bool bIsSwitchingChannel)
   return bReturn;
 }
 
-bool CPVRClients::OpenStream(const CPVRRecording &tag)
+bool CPVRClients::OpenStream(const CPVRRecordingPtr &channel)
 {
+  assert(channel.get());
+
   bool bReturn(false);
   CloseStream();
 
   /* try to open the recording stream on the client */
   PVR_CLIENT client;
-  if (GetConnectedClient(tag.m_iClientId, client) &&
-      client->OpenStream(tag))
+  if (GetCreatedClient(channel->m_iClientId, client) &&
+      client->OpenStream(channel))
   {
     CSingleLock lock(m_critSection);
-    m_playingClientId = tag.m_iClientId;
+    m_playingClientId = channel->m_iClientId;
     m_bIsPlayingRecording = true;
     m_strPlayingClientName = client->GetFriendlyName();
     bReturn = true;
@@ -1350,14 +1374,6 @@ int64_t CPVRClients::SeekStream(int64_t iFilePosition, int iWhence/* = SEEK_SET*
   return -EINVAL;
 }
 
-int64_t CPVRClients::GetStreamPosition(void)
-{
-  PVR_CLIENT client;
-  if (GetPlayingClient(client))
-    return client->GetStreamPosition();
-  return -EINVAL;
-}
-
 void CPVRClients::PauseStream(bool bPaused)
 {
   PVR_CLIENT client;
@@ -1365,26 +1381,14 @@ void CPVRClients::PauseStream(bool bPaused)
     client->PauseStream(bPaused);
 }
 
-CStdString CPVRClients::GetCurrentInputFormat(void) const
+std::string CPVRClients::GetCurrentInputFormat(void) const
 {
-  CStdString strReturn;
-  CPVRChannelPtr currentChannel;
-  if (GetPlayingChannel(currentChannel))
+  std::string strReturn;
+  CPVRChannelPtr currentChannel(GetPlayingChannel());
+  if (currentChannel)
     strReturn = currentChannel->InputFormat();
 
   return strReturn;
-}
-
-PVR_STREAM_PROPERTIES CPVRClients::GetCurrentStreamProperties(void)
-{
-  PVR_STREAM_PROPERTIES props;
-  PVR_CLIENT client;
-  
-  memset(&props, 0, sizeof(props));
-  if (GetPlayingClient(client))
-    client->GetStreamProperties(&props);
-
-  return props;
 }
 
 bool CPVRClients::IsPlaying(void) const
@@ -1415,16 +1419,199 @@ bool CPVRClients::IsPlayingRecording(void) const
   return m_bIsPlayingRecording;
 }
 
-bool CPVRClients::IsReadingLiveStream(void) const
-{
-  CSingleLock lock(m_critSection);
-  return m_bIsPlayingLiveTV;
-}
-
 bool CPVRClients::IsEncrypted(void) const
 {
   PVR_CLIENT client;
   if (GetPlayingClient(client))
     return client->IsPlayingEncryptedChannel();
   return false;
+}
+
+std::string CPVRClients::GetBackendHostnameByClientId(int iClientId) const
+{
+  PVR_CLIENT client;
+  std::string name;
+
+  if (GetCreatedClient(iClientId, client))
+  {
+    name = client->GetBackendHostname();
+  }
+
+  return name;
+}
+
+time_t CPVRClients::GetPlayingTime() const
+{
+  PVR_CLIENT client;
+  time_t time = 0;
+
+  if (GetPlayingClient(client))
+  {
+     time = client->GetPlayingTime();
+  }
+
+  return time;
+}
+
+bool CPVRClients::IsTimeshifting(void) const
+{
+  PVR_CLIENT client;
+  if (GetPlayingClient(client))
+    return client->IsTimeshifting();
+  return false;
+}
+
+time_t CPVRClients::GetBufferTimeStart() const
+{
+  PVR_CLIENT client;
+  time_t time = 0;
+
+  if (GetPlayingClient(client))
+  {
+    time = client->GetBufferTimeStart();
+  }
+
+  return time;
+}
+
+time_t CPVRClients::GetBufferTimeEnd() const
+{
+  PVR_CLIENT client;
+  time_t time = 0;
+
+  if (GetPlayingClient(client))
+  {
+    time = client->GetBufferTimeEnd();
+  }
+
+  return time;
+}
+
+bool CPVRClients::IsRealTimeStream(void) const
+{
+  PVR_CLIENT client;
+  if (GetPlayingClient(client))
+    return client->IsRealTimeStream();
+  return false;
+}
+
+void CPVRClients::ConnectionStateChange(int clientId, std::string &strConnectionString, PVR_CONNECTION_STATE newState,
+                                        std::string &strMessage)
+{
+  PVR_CLIENT client;
+  if (!GetClient(clientId, client))
+  {
+    CLog::Log(LOGDEBUG, "PVR - %s - invalid client id", __FUNCTION__);
+    return;
+  }
+
+  if (strConnectionString.empty())
+  {
+    CLog::Log(LOGERROR, "PVR - %s - invalid handler data", __FUNCTION__);
+    return;
+  }
+
+  int iMsg(-1);
+  bool bError(true);
+  bool bNotify(true);
+
+  switch (newState)
+  {
+    case PVR_CONNECTION_STATE_SERVER_UNREACHABLE:
+      iMsg = 35505; // Server is unreachable
+      break;
+    case PVR_CONNECTION_STATE_SERVER_MISMATCH:
+      iMsg = 35506; // Server does not respond properly
+      break;
+    case PVR_CONNECTION_STATE_VERSION_MISMATCH:
+      iMsg = 35507; // Server version is not compatible
+      break;
+    case PVR_CONNECTION_STATE_ACCESS_DENIED:
+      iMsg = 35508; // Access denied
+      break;
+    case PVR_CONNECTION_STATE_CONNECTED:
+      bError = false;
+      iMsg = 36034; // Connection established
+      if (client->GetPreviousConnectionState() == PVR_CONNECTION_STATE_UNKNOWN ||
+          client->GetPreviousConnectionState() == PVR_CONNECTION_STATE_CONNECTING)
+        bNotify = false;
+      break;
+    case PVR_CONNECTION_STATE_DISCONNECTED:
+      iMsg = 36030; // Connection lost
+      break;
+    case PVR_CONNECTION_STATE_CONNECTING:
+      bError = false;
+      iMsg = 35509; // Connecting
+      bNotify = false;
+      break;
+    default:
+      CLog::Log(LOGERROR, "PVR - %s - unknown connection state", __FUNCTION__);
+      return;
+  }
+
+  // Use addon-supplied message, if present
+  std::string strMsg;
+  if (!strMessage.empty())
+    strMsg = strMessage;
+  else
+    strMsg = g_localizeStrings.Get(iMsg);
+
+  // Notify user.
+  if (bNotify && !CSettings::GetInstance().GetBool(CSettings::SETTING_PVRMANAGER_HIDECONNECTIONLOSTWARNING))
+    CGUIDialogKaiToast::QueueNotification(bError ? CGUIDialogKaiToast::Error : CGUIDialogKaiToast::Info, client->Name().c_str(),
+                                          strMsg, 5000, true);
+
+  // Write event log entry.
+  CEventLog::GetInstance().Add(EventPtr(new CNotificationEvent(client->Name(), strMsg, client->Icon(),
+                                                               bError ? EventLevel::Error : EventLevel::Information)));
+
+  if (newState == PVR_CONNECTION_STATE_CONNECTED)
+  {
+    // update properties on connect
+    if (!client->GetAddonProperties())
+    {
+      CLog::Log(LOGERROR, "PVR - %s - error reading properties", __FUNCTION__);
+    }
+    g_PVRManager.Start();
+  }
+}
+
+void CPVRClients::OnSystemSleep()
+{
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  /* propagate event to each client */
+  for (auto &client : clients)
+    client.second->OnSystemSleep();
+}
+
+void CPVRClients::OnSystemWake()
+{
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  /* propagate event to each client */
+  for (auto &client : clients)
+    client.second->OnSystemWake();
+}
+
+void CPVRClients::OnPowerSavingActivated()
+{
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  /* propagate event to each client */
+  for (auto &client : clients)
+    client.second->OnPowerSavingActivated();
+}
+
+void CPVRClients::OnPowerSavingDeactivated()
+{
+  PVR_CLIENTMAP clients;
+  GetCreatedClients(clients);
+
+  /* propagate event to each client */
+  for (auto &client : clients)
+    client.second->OnPowerSavingDeactivated();
 }

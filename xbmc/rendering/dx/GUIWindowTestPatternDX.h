@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *      Test patterns designed by Ofer LaOr - hometheater.co.il
  *
@@ -23,6 +23,7 @@
  */
 
 #include "settings/windows/GUIWindowTestPattern.h"
+#include "guilib/GUIShaderDX.h"
 
 class CGUIWindowTestPatternDX : public CGUIWindowTestPattern
 {
@@ -39,5 +40,12 @@ private:
   virtual void DrawCircle(int originX, int originY, int radius);
   virtual void BeginRender();
   virtual void EndRender();
+  virtual void UpdateVertexBuffer(Vertex *vertecies, unsigned count);
+
+  void DrawRectangle(float x, float y, float x2, float y2, DWORD color);
+  void DrawCircleEx(float originX, float originY, float radius, DWORD color);
+
+  ID3D11Buffer*   m_vb;
+  unsigned        m_bufferWidth;
 };
 

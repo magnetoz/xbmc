@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,15 +19,13 @@
  *
  */
 
-#include "MediaSource.h" // for VECSOURCES
 #include <map>
+#include <vector>
+
+#include "MediaSource.h" // for VECSOURCES
 #include "utils/Job.h"
 #include "IStorageProvider.h"
 #include "threads/CriticalSection.h"
-
-#ifdef HAS_DVD_DRIVE
-using namespace MEDIA_DETECT;
-#endif
 
 #define TRAY_OPEN     16
 #define TRAY_CLOSED_NO_MEDIA  64
@@ -45,7 +43,7 @@ class CNetworkLocation
 public:
   CNetworkLocation() { id = 0; };
   int id;
-  CStdString path;
+  std::string path;
 };
 
 class CMediaManager : public IStorageEventsCallback, public IJobCallback
@@ -63,39 +61,39 @@ public:
   void GetRemovableDrives(VECSOURCES &removableDrives);
   void GetNetworkLocations(VECSOURCES &locations, bool autolocations = true);
 
-  bool AddNetworkLocation(const CStdString &path);
-  bool HasLocation(const CStdString& path) const;
-  bool RemoveLocation(const CStdString& path);
-  bool SetLocationPath(const CStdString& oldPath, const CStdString& newPath);
+  bool AddNetworkLocation(const std::string &path);
+  bool HasLocation(const std::string& path) const;
+  bool RemoveLocation(const std::string& path);
+  bool SetLocationPath(const std::string& oldPath, const std::string& newPath);
 
   void AddAutoSource(const CMediaSource &share, bool bAutorun=false);
   void RemoveAutoSource(const CMediaSource &share);
-  bool IsDiscInDrive(const CStdString& devicePath="");
-  bool IsAudio(const CStdString& devicePath="");
+  bool IsDiscInDrive(const std::string& devicePath="");
+  bool IsAudio(const std::string& devicePath="");
   bool HasOpticalDrive();
-  CStdString TranslateDevicePath(const CStdString& devicePath, bool bReturnAsDevice=false);
-  DWORD GetDriveStatus(const CStdString& devicePath="");
+  std::string TranslateDevicePath(const std::string& devicePath, bool bReturnAsDevice=false);
+  DWORD GetDriveStatus(const std::string& devicePath="");
 #ifdef HAS_DVD_DRIVE
-  CCdInfo* GetCdInfo(const CStdString& devicePath="");
-  bool RemoveCdInfo(const CStdString& devicePath="");
-  CStdString GetDiskLabel(const CStdString& devicePath="");
-  CStdString GetDiskUniqueId(const CStdString& devicePath="");
+  MEDIA_DETECT::CCdInfo* GetCdInfo(const std::string& devicePath="");
+  bool RemoveCdInfo(const std::string& devicePath="");
+  std::string GetDiskLabel(const std::string& devicePath="");
+  std::string GetDiskUniqueId(const std::string& devicePath="");
 #endif
-  CStdString GetDiscPath();
+  std::string GetDiscPath();
   void SetHasOpticalDrive(bool bstatus);
 
-  bool Eject(CStdString mountpath);
+  bool Eject(const std::string& mountpath);
   void EjectTray( const bool bEject=true, const char cDriveLetter='\0' );
   void CloseTray(const char cDriveLetter='\0');
   void ToggleTray(const char cDriveLetter='\0');
 
   void ProcessEvents();
 
-  std::vector<CStdString> GetDiskUsage();
+  std::vector<std::string> GetDiskUsage();
 
-  virtual void OnStorageAdded(const CStdString &label, const CStdString &path);
-  virtual void OnStorageSafelyRemoved(const CStdString &label);
-  virtual void OnStorageUnsafelyRemoved(const CStdString &label);
+  virtual void OnStorageAdded(const std::string &label, const std::string &path);
+  virtual void OnStorageSafelyRemoved(const std::string &label);
+  virtual void OnStorageUnsafelyRemoved(const std::string &label);
 
   virtual void OnJobComplete(unsigned int jobID, bool success, CJob *job) { }
 protected:
@@ -103,11 +101,10 @@ protected:
 
   CCriticalSection m_muAutoSource, m_CritSecStorageProvider;
 #ifdef HAS_DVD_DRIVE
-  std::map<CStdString,CCdInfo*> m_mapCdInfo;
-  bool HashDVD(const CStdString& dvdpath, uint32_t& crc);
+  std::map<std::string,MEDIA_DETECT::CCdInfo*> m_mapCdInfo;
 #endif
   bool m_bhasoptical;
-  CStdString m_strFirstAvailDrive;
+  std::string m_strFirstAvailDrive;
 
 private:
   IStorageProvider *m_platformStorage;

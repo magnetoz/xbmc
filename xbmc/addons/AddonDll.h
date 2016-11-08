@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,37 +18,43 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+#include <math.h>
+#include <string>
+#include <vector>
+
 #include "Addon.h"
 #include "DllAddon.h"
 #include "AddonManager.h"
 #include "AddonStatusHandler.h"
-#include "AddonCallbacks.h"
-#include "settings/dialogs/GUIDialogSettings.h"
+#include "addons/binary/interfaces/AddonInterfaces.h"
+#include "guilib/GUIWindowManager.h"
+#include "dialogs/GUIDialogOK.h"
 #include "utils/URIUtils.h"
 #include "filesystem/File.h"
 #include "filesystem/SpecialProtocol.h"
 #include "filesystem/Directory.h"
 #include "utils/log.h"
-#include "interfaces/IAnnouncer.h"
-#include "interfaces/AnnouncementManager.h"
-
-using namespace XFILE;
+#include "utils/StringUtils.h"
+#include "utils/XMLUtils.h"
+#include "utils/Variant.h"
+#include "Util.h"
 
 namespace ADDON
 {
   template<class TheDll, typename TheStruct, typename TheProps>
-  class CAddonDll : public CAddon, public ANNOUNCEMENT::IAnnouncer
+  class CAddonDll : public CAddon
   {
   public:
-    CAddonDll(const AddonProps &props);
-    CAddonDll(const cp_extension_t *ext);
+    CAddonDll(AddonProps props);
+
+    //FIXME: does shallow pointer copy. no copy assignment op
+    CAddonDll(const CAddonDll<TheDll, TheStruct, TheProps> &rhs);
     virtual ~CAddonDll();
-    AddonPtr Clone() const;
     virtual ADDON_STATUS GetStatus();
 
     // addon settings
     virtual void SaveSettings();
-    virtual CStdString GetSetting(const CStdString& key);
+    virtual std::string GetSetting(const std::string& key);
 
     ADDON_STATUS Create();
     virtual void Stop();
@@ -57,16 +63,16 @@ namespace ADDON
 
     bool DllLoaded(void) const;
 
-    void Announce(ANNOUNCEMENT::AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data);
-
   protected:
     void HandleException(std::exception &e, const char* context);
     bool Initialized() { return m_initialized; }
-    virtual void BuildLibName(const cp_extension_t *ext = NULL) {}
     virtual bool LoadSettings();
+    static uint32_t GetChildCount() { static uint32_t childCounter = 0; return childCounter++; }
     TheStruct* m_pStruct;
     TheProps*     m_pInfo;
-    CAddonCallbacks* m_pHelpers;
+    CAddonInterfaces* m_pHelpers;
+    bool m_bIsChild;
+    std::string m_parentLib;
 
   private:
     TheDll* m_pDll;
@@ -86,35 +92,9 @@ namespace ADDON
   };
 
 template<class TheDll, typename TheStruct, typename TheProps>
-CAddonDll<TheDll, TheStruct, TheProps>::CAddonDll(const cp_extension_t *ext)
-  : CAddon(ext)
-{
-  // if library attribute isn't present, look for a system-dependent one
-  if (ext && m_strLibName.IsEmpty())
-  {
-#if defined(TARGET_ANDROID)
-  m_strLibName = CAddonMgr::Get().GetExtValue(ext->configuration, "@library_android");
-#elif defined(_LINUX) && !defined(TARGET_DARWIN)
-    m_strLibName = CAddonMgr::Get().GetExtValue(ext->configuration, "@library_linux");
-#elif defined(_WIN32) && defined(HAS_SDL_OPENGL)
-    m_strLibName = CAddonMgr::Get().GetExtValue(ext->configuration, "@library_wingl");
-#elif defined(_WIN32) && defined(HAS_DX)
-    m_strLibName = CAddonMgr::Get().GetExtValue(ext->configuration, "@library_windx");
-#elif defined(TARGET_DARWIN)
-    m_strLibName = CAddonMgr::Get().GetExtValue(ext->configuration, "@library_osx");
-#endif
-  }
-
-  m_pStruct     = NULL;
-  m_initialized = false;
-  m_pDll        = NULL;
-  m_pInfo       = NULL;
-  m_needsavedsettings = false;
-}
-
-template<class TheDll, typename TheStruct, typename TheProps>
-CAddonDll<TheDll, TheStruct, TheProps>::CAddonDll(const AddonProps &props)
-  : CAddon(props)
+CAddonDll<TheDll, TheStruct, TheProps>::CAddonDll(AddonProps props)
+  : CAddon(std::move(props)),
+    m_bIsChild(false)
 {
   m_pStruct     = NULL;
   m_initialized = false;
@@ -122,6 +102,21 @@ CAddonDll<TheDll, TheStruct, TheProps>::CAddonDll(const AddonProps &props)
   m_pInfo       = NULL;
   m_pHelpers    = NULL;
   m_needsavedsettings = false;
+  m_parentLib.clear();
+}
+
+template<class TheDll, typename TheStruct, typename TheProps>
+CAddonDll<TheDll, TheStruct, TheProps>::CAddonDll(const CAddonDll<TheDll, TheStruct, TheProps> &rhs)
+  : CAddon(rhs),
+    m_bIsChild(true)
+{
+  m_pStruct           = rhs.m_pStruct;
+  m_initialized       = rhs.m_initialized;
+  m_pDll              = rhs.m_pDll;
+  m_pInfo             = rhs.m_pInfo;
+  m_pHelpers          = rhs.m_pHelpers;
+  m_needsavedsettings = rhs.m_needsavedsettings;
+  m_parentLib = rhs.m_parentLib;
 }
 
 template<class TheDll, typename TheStruct, typename TheProps>
@@ -132,29 +127,41 @@ CAddonDll<TheDll, TheStruct, TheProps>::~CAddonDll()
 }
 
 template<class TheDll, typename TheStruct, typename TheProps>
-AddonPtr CAddonDll<TheDll, TheStruct, TheProps>::Clone() const
-{
-  return AddonPtr(new CAddonDll<TheDll, TheStruct, TheProps>(*this));
-}
-
-template<class TheDll, typename TheStruct, typename TheProps>
 bool CAddonDll<TheDll, TheStruct, TheProps>::LoadDll()
 {
-  CStdString strFileName;
-  if (!Parent())
+  if (m_pDll)
+    return true;
+
+  std::string strFileName;
+  std::string strAltFileName;
+  if (!m_bIsChild)
   {
     strFileName = LibPath();
   }
   else
-  { //FIXME hack to load same Dll twice
-    CStdString extension = URIUtils::GetExtension(m_strLibName);
-    strFileName = "special://temp/" + m_strLibName;
-    URIUtils::RemoveExtension(strFileName);
-    strFileName += "-" + ID() + extension;
+  {
+    std::string libPath = LibPath();
+    if (!XFILE::CFile::Exists(libPath))
+    {
+      std::string temp = CSpecialProtocol::TranslatePath("special://xbmc/");
+      std::string tempbin = CSpecialProtocol::TranslatePath("special://xbmcbin/");
+      libPath.erase(0, temp.size());
+      libPath = tempbin + libPath;
+      if (!XFILE::CFile::Exists(libPath))
+      {
+        CLog::Log(LOGERROR, "ADDON: Could not locate %s", m_props.libname.c_str());
+        return false;
+      }
+    }
 
-    if (!CFile::Exists(strFileName))
-      CFile::Cache(LibPath(), strFileName);
+    std::stringstream childcount;
+    childcount << GetChildCount();
+    std::string extension = URIUtils::GetExtension(libPath);
+    strFileName = "special://temp/" + ID() + "-" + childcount.str() + extension;
 
+    XFILE::CFile::Copy(libPath, strFileName);
+
+    m_parentLib = libPath;
     CLog::Log(LOGNOTICE, "ADDON: Loaded virtual child addon %s", strFileName.c_str());
   }
 
@@ -162,22 +169,41 @@ bool CAddonDll<TheDll, TheStruct, TheProps>::LoadDll()
 #if defined(TARGET_ANDROID)
   // Android libs MUST live in this path, else multi-arch will break.
   // The usual soname requirements apply. no subdirs, and filename is ^lib.*\.so$
-  if (!CFile::Exists(strFileName))
+  if (!XFILE::CFile::Exists(strFileName))
   {
-    CStdString tempbin = getenv("XBMC_ANDROID_LIBS");
-    strFileName = tempbin + "/" + m_strLibName;
+    std::string tempbin = getenv("XBMC_ANDROID_LIBS");
+    strFileName = tempbin + "/" + m_props.libname;
   }
 #endif
-  if (!CFile::Exists(strFileName))
+  if (!XFILE::CFile::Exists(strFileName))
   {
-    CStdString temp = CSpecialProtocol::TranslatePath("special://xbmc/");
-    CStdString tempbin = CSpecialProtocol::TranslatePath("special://xbmcbin/");
-    strFileName.erase(0, temp.size());
-    strFileName = tempbin + strFileName;
-    if (!CFile::Exists(strFileName))
+    std::string altbin = CSpecialProtocol::TranslatePath("special://xbmcaltbinaddons/");
+    if (!altbin.empty())
     {
-      CLog::Log(LOGERROR, "ADDON: Could not locate %s", m_strLibName.c_str());
-      return false;
+      strAltFileName = altbin + m_props.libname;
+      if (!XFILE::CFile::Exists(strAltFileName))
+      {
+        std::string temp = CSpecialProtocol::TranslatePath("special://xbmc/addons/");
+        strAltFileName = strFileName;
+        strAltFileName.erase(0, temp.size());
+        strAltFileName = altbin + strAltFileName;
+      }
+      CLog::Log(LOGDEBUG, "ADDON: Trying to load %s", strAltFileName.c_str());
+    }
+
+    if (XFILE::CFile::Exists(strAltFileName))
+      strFileName = strAltFileName;
+    else
+    {
+      std::string temp = CSpecialProtocol::TranslatePath("special://xbmc/");
+      std::string tempbin = CSpecialProtocol::TranslatePath("special://xbmcbin/");
+      strFileName.erase(0, temp.size());
+      strFileName = tempbin + strFileName;
+      if (!XFILE::CFile::Exists(strFileName))
+      {
+        CLog::Log(LOGERROR, "ADDON: Could not locate %s", m_props.libname.c_str());
+        return false;
+      }
     }
   }
 
@@ -189,7 +215,18 @@ bool CAddonDll<TheDll, TheStruct, TheProps>::LoadDll()
   {
     delete m_pDll;
     m_pDll = NULL;
-    new CAddonStatusHandler(ID(), ADDON_STATUS_UNKNOWN, "Can't load Dll", false);
+
+    CGUIDialogOK* pDialog = (CGUIDialogOK*)g_windowManager.GetWindow(WINDOW_DIALOG_OK);
+    if (pDialog)
+    {
+      std::string heading = StringUtils::Format("%s: %s", TranslateType(Type(), true).c_str(), Name().c_str());
+      pDialog->SetHeading(CVariant{heading});
+      pDialog->SetLine(1, CVariant{24070});
+      pDialog->SetLine(2, CVariant{24071});
+      pDialog->SetLine(2, CVariant{"Can't load shared library"});
+      pDialog->Open();
+    }
+
     return false;
   }
 
@@ -207,6 +244,9 @@ bool CAddonDll<TheDll, TheStruct, TheProps>::LoadDll()
 template<class TheDll, typename TheStruct, typename TheProps>
 ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::Create()
 {
+  /* ensure that a previous instance is destroyed */
+  Destroy();
+
   ADDON_STATUS status(ADDON_STATUS_UNKNOWN);
   CLog::Log(LOGDEBUG, "ADDON: Dll Initializing - %s", Name().c_str());
   m_initialized = false;
@@ -216,7 +256,7 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::Create()
 
   /* Allocate the helper function class to allow crosstalk over
      helper libraries */
-  m_pHelpers = new CAddonCallbacks(this);
+  m_pHelpers = new CAddonInterfaces(this);
 
   /* Call Create to make connections, initializing data or whatever is
      needed to become the AddOn running */
@@ -226,7 +266,6 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::Create()
     if (status == ADDON_STATUS_OK)
     {
       m_initialized = true;
-      ANNOUNCEMENT::CAnnouncementManager::AddAnnouncer(this);
     }
     else if ((status == ADDON_STATUS_NEED_SETTINGS) || (status == ADDON_STATUS_NEED_SAVEDSETTINGS))
     {
@@ -239,16 +278,22 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::Create()
     else
     { // Addon failed initialization
       CLog::Log(LOGERROR, "ADDON: Dll %s - Client returned bad status (%i) from Create and is not usable", Name().c_str(), status);
-      new CAddonStatusHandler(ID(), status, "", false);
+      
+      CGUIDialogOK* pDialog = (CGUIDialogOK*)g_windowManager.GetWindow(WINDOW_DIALOG_OK);
+      if (pDialog)
+      {
+        std::string heading = StringUtils::Format("%s: %s", TranslateType(Type(), true).c_str(), Name().c_str());
+        pDialog->SetHeading(CVariant{heading});
+        pDialog->SetLine(1, CVariant{24070});
+        pDialog->SetLine(2, CVariant{24071});
+        pDialog->Open();
+      }
     }
   }
   catch (std::exception &e)
   {
     HandleException(e, "m_pDll->Create");
   }
-
-  if (!m_initialized)
-    SAFE_DELETE(m_pHelpers);
 
   return status;
 }
@@ -292,8 +337,6 @@ void CAddonDll<TheDll, TheStruct, TheProps>::Stop()
 template<class TheDll, typename TheStruct, typename TheProps>
 void CAddonDll<TheDll, TheStruct, TheProps>::Destroy()
 {
-  ANNOUNCEMENT::CAnnouncementManager::RemoveAnnouncer(this);
-
   /* Unload library file */
   try
   {
@@ -313,6 +356,8 @@ void CAddonDll<TheDll, TheStruct, TheProps>::Destroy()
   m_pStruct = NULL;
   if (m_pDll)
   {
+    if (m_bIsChild)
+      XFILE::CFile::Delete(m_pDll->GetFile());
     delete m_pDll;
     m_pDll = NULL;
     CLog::Log(LOGINFO, "ADDON: Dll Destroyed - %s", Name().c_str());
@@ -405,7 +450,7 @@ TiXmlElement CAddonDll<TheDll, TheStruct, TheProps>::MakeSetting(DllSetting& set
       node.SetAttribute("id", setting.id);
       node.SetAttribute("type", "enum");
       node.SetAttribute("label", setting.label);
-      CStdString values;
+      std::string values;
       for (unsigned int i = 0; i < setting.entry.size(); i++)
       {
         values.append(setting.entry[i]);
@@ -431,7 +476,7 @@ void CAddonDll<TheDll, TheStruct, TheProps>::SaveSettings()
 }
 
 template<class TheDll, typename TheStruct, typename TheProps>
-CStdString CAddonDll<TheDll, TheStruct, TheProps>::GetSetting(const CStdString& key)
+std::string CAddonDll<TheDll, TheStruct, TheProps>::GetSetting(const std::string& key)
 {
   return CAddon::GetSetting(key);
 }
@@ -457,41 +502,41 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::TransferSettings()
     {
       ADDON_STATUS status = ADDON_STATUS_OK;
       const char *id = setting->Attribute("id");
-      const char *type = setting->Attribute("type");
+      const std::string type = XMLUtils::GetAttribute(setting, "type");
       const char *option = setting->Attribute("option");
 
-      if (type)
+      if (id && !type.empty())
       {
-        if (strcmpi(type,"sep") == 0 || strcmpi(type,"lsep") == 0)
+        if (type == "sep" || type == "lsep")
         {
           /* Don't propagate separators */
         }
-        else if (strcmpi(type, "text") == 0 || strcmpi(type, "ipaddress") == 0 ||
-          strcmpi(type, "video") == 0 || strcmpi(type, "audio") == 0 ||
-          strcmpi(type, "image") == 0 || strcmpi(type, "folder") == 0 ||
-          strcmpi(type, "executable") == 0 || strcmpi(type, "file") == 0 ||
-          strcmpi(type, "action") == 0 || strcmpi(type, "date") == 0 ||
-          strcmpi(type, "time") == 0 || strcmpi(type, "select") == 0 ||
-          strcmpi(type, "addon") == 0 || strcmpi(type, "labelenum") == 0 ||
-          strcmpi(type, "fileenum") == 0 )
+        else if (type == "text"       || type == "ipaddress" ||
+                 type == "video"      || type == "audio"     ||
+                 type == "image"      || type == "folder"    ||
+                 type == "executable" || type == "file"      ||
+                 type == "action"     || type == "date"      ||
+                 type == "time"       || type == "select"    ||
+                 type == "addon"      || type == "labelenum" ||
+                 type == "fileenum" )
         {
           status = m_pDll->SetSetting(id, (const char*) GetSetting(id).c_str());
         }
-        else if ((strcmpi(type, "enum") == 0 || strcmpi(type,"integer") == 0) ||
-          strcmpi(type, "labelenum") == 0 || strcmpi(type, "rangeofnum") == 0)
+        else if (type == "enum"      || type =="integer" ||
+                 type == "labelenum" || type == "rangeofnum")
         {
-          int tmp = atoi(GetSetting(id));
+          int tmp = atoi(GetSetting(id).c_str());
           status = m_pDll->SetSetting(id, (int*) &tmp);
         }
-        else if (strcmpi(type, "bool") == 0)
+        else if (type == "bool")
         {
           bool tmp = (GetSetting(id) == "true") ? true : false;
           status = m_pDll->SetSetting(id, (bool*) &tmp);
         }
-        else if (strcmpi(type, "rangeofnum") == 0 || strcmpi(type, "slider") == 0 ||
-                 strcmpi(type, "number") == 0)
+        else if (type == "rangeofnum" || type == "slider" ||
+                 type == "number")
         {
-          float tmpf = (float)atof(GetSetting(id));
+          float tmpf = (float)atof(GetSetting(id).c_str());
           int   tmpi;
 
           if (option && strcmpi(option,"int") == 0)
@@ -507,7 +552,7 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::TransferSettings()
         else
         {
           /* Log unknowns as an error, but go ahead and transfer the string */
-          CLog::Log(LOGERROR, "Unknown setting type '%s' for %s", type, Name().c_str());
+          CLog::Log(LOGERROR, "Unknown setting type '%s' for %s", type.c_str(), Name().c_str());
           status = m_pDll->SetSetting(id, (const char*) GetSetting(id).c_str());
         }
 
@@ -527,19 +572,6 @@ ADDON_STATUS CAddonDll<TheDll, TheStruct, TheProps>::TransferSettings()
   }
 
   return ADDON_STATUS_OK;
-}
-
-template<class TheDll, typename TheStruct, typename TheProps>
-void CAddonDll<TheDll, TheStruct, TheProps>::Announce(ANNOUNCEMENT::AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data)
-{
-  try
-  {
-    m_pDll->Announce(ANNOUNCEMENT::AnnouncementFlagToString(flag), sender, message, &data);
-  }
-  catch (std::exception &e)
-  {
-    HandleException(e, "m_pDll->Announce()");
-  }
 }
 
 template<class TheDll, typename TheStruct, typename TheProps>

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,14 +18,14 @@
  *
  */
 
-#include "Autorun.h"
 #include "GUIDialogPlayEject.h"
 #include "guilib/GUIWindowManager.h"
 #include "storage/MediaManager.h"
 #include "utils/log.h"
-#include "utils/URIUtils.h"
+#include "utils/Variant.h"
 #include "utils/XMLUtils.h"
-#include "video/VideoInfoTag.h"
+
+#include <utility>
 
 #define ID_BUTTON_PLAY      11
 #define ID_BUTTON_EJECT     10
@@ -100,7 +100,7 @@ bool CGUIDialogPlayEject::ShowAndGetInput(const CFileItem & item,
     return false;
 
   // Figure out Lines 1 and 2 of the dialog
-  CStdString strLine1, strLine2;
+  std::string strLine1, strLine2;
   CXBMCTinyXML discStubXML;
   if (discStubXML.LoadFile(item.GetPath()))
   {
@@ -115,21 +115,21 @@ bool CGUIDialogPlayEject::ShowAndGetInput(const CFileItem & item,
   }
 
   // Use the label for Line 1 if not defined
-  if (strLine1.IsEmpty())
+  if (strLine1.empty())
     strLine1 = item.GetLabel();
 
   // Setup dialog parameters
-  pDialog->SetHeading(219);
-  pDialog->SetLine(0, 429);
-  pDialog->SetLine(1, strLine1);
-  pDialog->SetLine(2, strLine2);
+  pDialog->SetHeading(CVariant{219});
+  pDialog->SetLine(0, CVariant{429});
+  pDialog->SetLine(1, CVariant{std::move(strLine1)});
+  pDialog->SetLine(2, CVariant{std::move(strLine2)});
   pDialog->SetChoice(ID_BUTTON_PLAY - 10, 208);
   pDialog->SetChoice(ID_BUTTON_EJECT - 10, 13391);
   if (uiAutoCloseTime)
     pDialog->SetAutoClose(uiAutoCloseTime);
 
   // Display the dialog
-  pDialog->DoModal();
+  pDialog->Open();
 
   return pDialog->IsConfirmed();
 }

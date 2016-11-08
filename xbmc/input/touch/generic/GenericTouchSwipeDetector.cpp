@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,13 +29,13 @@
 // maximum time between touch down and up (in nanoseconds)
 #define SWIPE_MAX_TIME            500000000
 // maxmium swipe distance between touch down and up (in multiples of screen DPI)
-#define SWIPE_MIN_DISTANCE        0.5
+#define SWIPE_MIN_DISTANCE        0.5f
 // original maximum variance of the touch movement
-#define SWIPE_MAX_VARIANCE        0.2
+#define SWIPE_MAX_VARIANCE        0.2f
 // tangens of the maximum angle (20 degrees) the touch movement may vary in a
 // direction perpendicular to the swipe direction (in radians)
 // => tan(20 deg) = tan(20 * M_PI / 180)
-#define SWIPE_MAX_VARIANCE_ANGLE  0.363970234266
+#define SWIPE_MAX_VARIANCE_ANGLE  0.36397023f
 
 CGenericTouchSwipeDetector::CGenericTouchSwipeDetector(ITouchActionHandler *handler, float dpi)
   : IGenericTouchGestureDetector(handler, dpi),
@@ -45,7 +45,7 @@ CGenericTouchSwipeDetector::CGenericTouchSwipeDetector(ITouchActionHandler *hand
 
 bool CGenericTouchSwipeDetector::OnTouchDown(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   m_size += 1;
@@ -62,7 +62,7 @@ bool CGenericTouchSwipeDetector::OnTouchDown(unsigned int index, const Pointer &
 
 bool CGenericTouchSwipeDetector::OnTouchUp(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   m_size -= 1;
@@ -91,7 +91,7 @@ bool CGenericTouchSwipeDetector::OnTouchUp(unsigned int index, const Pointer &po
 
 bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   // only handle swipes of moved pointers
@@ -173,7 +173,7 @@ bool CGenericTouchSwipeDetector::OnTouchMove(unsigned int index, const Pointer &
 
 bool CGenericTouchSwipeDetector::OnTouchUpdate(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   if (m_done)

@@ -1,7 +1,7 @@
 #pragma once
 /*
- *      Copyright (C) 2012 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2012-2013 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 #include "utils/IXmlDeserializable.h"
 
@@ -53,11 +53,11 @@ protected:
   bool m_negated;
 };
 
-typedef boost::shared_ptr<CBooleanLogicValue> CBooleanLogicValuePtr;
+typedef std::shared_ptr<CBooleanLogicValue> CBooleanLogicValuePtr;
 typedef std::vector<CBooleanLogicValuePtr> CBooleanLogicValues;
 
 class CBooleanLogicOperation;
-typedef boost::shared_ptr<CBooleanLogicOperation> CBooleanLogicOperationPtr;
+typedef std::shared_ptr<CBooleanLogicOperation> CBooleanLogicOperationPtr;
 typedef std::vector<CBooleanLogicOperationPtr> CBooleanLogicOperations;
 
 class CBooleanLogicOperation : public IXmlDeserializable

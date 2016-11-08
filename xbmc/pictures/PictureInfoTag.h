@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 
 #include "utils/ISerializable.h"
 #include "utils/ISortable.h"
-#include "utils/Archive.h"
+#include "utils/IArchivable.h"
 #include "DllLibExif.h"
 #include "XBDateTime.h"
 
@@ -63,6 +63,7 @@
 #define SLIDE_EXIF_GPS_LONGITUDE    941
 #define SLIDE_EXIF_GPS_ALTITUDE     942
 #define SLIDE_EXIF_ORIENTATION      943
+#define SLIDE_EXIF_XPCOMMENT        944
 
 #define SLIDE_IPTC_SUBLOCATION      957
 #define SLIDE_IPTC_IMAGETYPE        958
@@ -89,6 +90,8 @@
 #define SLIDE_IPTC_COUNTRY_CODE     979
 #define SLIDE_IPTC_REF_SERVICE      980
 
+class CVariant;
+
 class CPictureInfoTag : public IArchivable, public ISerializable, public ISortable
 {
 public:
@@ -96,16 +99,16 @@ public:
   void Reset();
   virtual void Archive(CArchive& ar);
   virtual void Serialize(CVariant& value) const;
-  virtual void ToSortable(SortItem& sortable);
+  virtual void ToSortable(SortItem& sortable, Field field) const;
   const CPictureInfoTag& operator=(const CPictureInfoTag& item);
-  const CStdString GetInfo(int info) const;
+  const std::string GetInfo(int info) const;
 
   bool Loaded() const { return m_isLoaded; };
-  bool Load(const CStdString &path);
+  bool Load(const std::string &path);
 
-  static int TranslateString(const CStdString &info);
+  static int TranslateString(const std::string &info);
 
-  void SetInfo(int info, const CStdString& value);
+  void SetInfo(int info, const std::string& value);
 
   /**
    * GetDateTimeTaken() -- Returns the EXIF DateTimeOriginal for current picture

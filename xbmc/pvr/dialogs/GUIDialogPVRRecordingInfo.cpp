@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,35 +18,68 @@
  *
  */
 
-#include "GUIDialogPVRRecordingInfo.h"
-#include "guilib/GUIWindowManager.h"
 #include "FileItem.h"
+#include "guilib/GUIWindowManager.h"
+#include "pvr/windows/GUIWindowPVRBase.h"
 
-using namespace std;
+#include "GUIDialogPVRRecordingInfo.h"
+
 using namespace PVR;
 
-#define CONTROL_BTN_OK  10
+#define CONTROL_BTN_OK  7
+#define CONTROL_BTN_PLAY_RECORDING  8
 
 CGUIDialogPVRRecordingInfo::CGUIDialogPVRRecordingInfo(void)
-  : CGUIDialog(WINDOW_DIALOG_PVR_RECORDING_INFO, "DialogPVRRecordingInfo.xml")
+  : CGUIDialog(WINDOW_DIALOG_PVR_RECORDING_INFO, "DialogPVRInfo.xml")
   , m_recordItem(new CFileItem)
 {
 }
 
 bool CGUIDialogPVRRecordingInfo::OnMessage(CGUIMessage& message)
 {
-  if (message.GetMessage() == GUI_MSG_CLICKED)
+  switch (message.GetMessage())
   {
-    int iControl = message.GetSenderId();
-
-    if (iControl == CONTROL_BTN_OK)
-    {
-      Close();
-      return true;
-    }
+    case GUI_MSG_CLICKED:
+      return OnClickButtonOK(message) || OnClickButtonPlay(message);
   }
 
   return CGUIDialog::OnMessage(message);
+}
+
+bool CGUIDialogPVRRecordingInfo::OnClickButtonOK(CGUIMessage &message)
+{
+  bool bReturn = false;
+
+  if (message.GetSenderId() == CONTROL_BTN_OK)
+  {
+    Close();
+    bReturn = true;
+  }
+
+  return bReturn;
+}
+
+bool CGUIDialogPVRRecordingInfo::OnClickButtonPlay(CGUIMessage &message)
+{
+  bool bReturn = false;
+
+  if (message.GetSenderId() == CONTROL_BTN_PLAY_RECORDING)
+  {
+    Close();
+
+    if (m_recordItem)
+      CGUIWindowPVRBase::PlayRecording(m_recordItem.get(), false /* don't play minimized */, true /* check resume */);
+
+    bReturn = true;
+  }
+
+  return bReturn;
+}
+
+bool CGUIDialogPVRRecordingInfo::OnInfo(int actionID)
+{
+  Close();
+  return true;
 }
 
 void CGUIDialogPVRRecordingInfo::SetRecording(const CFileItem *item)
@@ -58,3 +91,17 @@ CFileItemPtr CGUIDialogPVRRecordingInfo::GetCurrentListItem(int offset)
 {
   return m_recordItem;
 }
+
+void CGUIDialogPVRRecordingInfo::ShowFor(const CFileItemPtr& item)
+{
+  if (item && item->IsPVRRecording())
+  {
+    CGUIDialogPVRRecordingInfo* pDlgInfo = dynamic_cast<CGUIDialogPVRRecordingInfo*>(g_windowManager.GetWindow(WINDOW_DIALOG_PVR_RECORDING_INFO));
+    if (pDlgInfo)
+    {
+      pDlgInfo->SetRecording(item.get());
+      pDlgInfo->Open();
+    }
+  }
+}
+

@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,17 +20,23 @@
  *
  */
 
-#define EGL_QUIRK_NONE 0
+#define EGL_QUIRK_NONE (0)
 
 /*! \brief Enable this if the implementation does not know its native
      resolution until a surface has been created. Used, for example, on Android
      where we have no control over the resolution, so we query it once the
      surface exists.
 */
-#define EGL_QUIRK_NEED_WINDOW_FOR_RES 1
+#define EGL_QUIRK_NEED_WINDOW_FOR_RES (1 << 0)
 
 /*! \brief Enable this if the implementation should have its native window
      destroyed when the surface is destroyed. In practice this means that a new
      native window will be created each time the main XBMC window is recreated.
 */
-#define EGL_QUIRK_DESTROY_NATIVE_WINDOW_WITH_SURFACE 2
+#define EGL_QUIRK_DESTROY_NATIVE_WINDOW_WITH_SURFACE (1 << 1)
+
+/*! \brief Some drivers destroy the native display on resolution change. xbmc's EGL
+    implementation is not aware of this change. In that case a Reinit of the display
+    needs to be done.
+*/
+#define EGL_QUIRK_RECREATE_DISPLAY_ON_CREATE_WINDOW (1 << 3)

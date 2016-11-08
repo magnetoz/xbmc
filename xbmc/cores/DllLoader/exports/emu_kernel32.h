@@ -1,9 +1,8 @@
-#ifndef _EMU_KERNEL32_H_
-#define _EMU_KERNEL32_H_
+#pragma once
 
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,18 +15,18 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
-#include "utils/StdString.h"
 #include "system.h"
+#include <stdarg.h>
 
 #define MAX_LEADBYTES             12
 #define MAX_DEFAULTCHAR           2
 
-#if defined (_LINUX)
+#if defined (TARGET_POSIX)
 typedef struct _STARTUPINFOA
 {
   DWORD cb;
@@ -90,7 +89,7 @@ SYSTEM_INFO, *LPSYSTEM_INFO;
 #endif
 
 typedef DWORD LCTYPE;
-#if defined (_LINUX)
+#if defined (TARGET_POSIX)
 typedef BOOL (*PHANDLER_ROUTINE)(DWORD);
 
 typedef struct _OSVERSIONINFO
@@ -100,7 +99,7 @@ typedef struct _OSVERSIONINFO
   DWORD dwMinorVersion;
   DWORD dwBuildNumber;
   DWORD dwPlatformId;
-  TCHAR szCSDVersion[128];
+  char szCSDVersion[128];
 }
 OSVERSIONINFO, *LPOSVERSIONINFO;
 
@@ -115,7 +114,7 @@ typedef struct _OSVERSIONINFOW
 }
 OSVERSIONINFOW, *LPOSVERSIONINFOW;
 
-#ifdef _LINUX
+#ifdef TARGET_POSIX
 #define EXCEPTION_MAXIMUM_PARAMETERS 15
 typedef struct _EXCEPTION_RECORD {
   DWORD ExceptionCode;
@@ -132,7 +131,7 @@ typedef struct _EXCEPTION_RECORD {
 
 #endif
 
-#ifdef _LINUX
+#ifdef TARGET_POSIX
 #define LANG_ENGLISH 0x09
 #define SUBLANG_ENGLISH_US 0x01
 #define MAKELCID(lgid, srtid)  ((DWORD)((((DWORD)((WORD  )(srtid))) << 16) | ((DWORD)((WORD  )(lgid)))))
@@ -175,7 +174,7 @@ typedef struct _EXCEPTION_RECORD {
 // LOCAL defines from mingw
 #define MAX_LEADBYTES 	12
 #define MAX_DEFAULTCHAR	2
-#if defined (_LINUX)
+#if defined (TARGET_POSIX)
 #define LOCALE_NOUSEROVERRIDE	0x80000000
 #define LOCALE_USE_CP_ACP	0x40000000
 #if (WINVER >= 0x0400)
@@ -591,9 +590,11 @@ typedef long LONG_PTR;
 //All kernel32 function should use WINAPI calling convention.
 //When doing emulation or interception, the calling convention should
 //match exactly the target dlls suppose to use.   Monkeyhappy
+#ifdef TARGET_WINDOWS
 extern "C" HANDLE WINAPI dllFindFirstFileA(LPCTSTR lpFileName, LPWIN32_FIND_DATA lpFindFileData);
 extern "C" BOOL WINAPI dllFindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATA lpFindFileData);
 extern "C" BOOL WINAPI dllFindClose(HANDLE hFile);
+#endif
 extern "C" UINT WINAPI dllGetAtomNameA( ATOM nAtom, LPTSTR lpBuffer, int nSize);
 extern "C" ATOM WINAPI dllFindAtomA( LPCTSTR lpString);
 extern "C" ATOM WINAPI dllAddAtomA( LPCTSTR lpString);
@@ -608,9 +609,6 @@ extern "C" BOOL WINAPI dllFreeLibrary(HINSTANCE hLibModule);
 extern "C" FARPROC WINAPI dllGetProcAddress(HMODULE hModule, LPCSTR function);
 extern "C" HMODULE WINAPI dllGetModuleHandleA(LPCSTR lpModuleName);
 extern "C" DWORD WINAPI dllGetModuleFileNameA(HMODULE hModule, LPSTR lpFilename, DWORD nSize);
-
-//GetSystemInfo are hardcoded for Xbox only.
-extern "C" void WINAPI dllGetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 
 //Current just a dummy function
 extern "C" UINT WINAPI dllGetPrivateProfileIntA(LPCSTR lpAppName, LPCSTR lpKeyName,
@@ -721,4 +719,3 @@ extern "C" LPVOID WINAPI dllLockResource(HGLOBAL hResData);
 extern "C" SIZE_T WINAPI dllGlobalSize(HGLOBAL hMem);
 extern "C" DWORD  WINAPI dllSizeofResource(HMODULE hModule, HRSRC hResInfo);
 
-#endif // _EMU_KERNEL32_H_

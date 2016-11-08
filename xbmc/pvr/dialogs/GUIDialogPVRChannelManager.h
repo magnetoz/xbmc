@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,10 +19,14 @@
  *
  */
 
-#include "guilib/GUIDialog.h"
+#include <vector>
+
 #include "dialogs/GUIDialogContextMenu.h"
+#include "guilib/GUIDialog.h"
 #include "view/GUIViewControl.h"
-#include "../channels/PVRChannelGroup.h"
+
+#include "pvr/channels/PVRChannelGroup.h"
+#include "addons/PVRClient.h"
 
 namespace PVR
 {
@@ -39,12 +43,14 @@ namespace PVR
     virtual CFileItemPtr GetCurrentListItem(int offset = 0);
 
   protected:
+    virtual void OnInitWindow();
+    virtual void OnDeinitWindow(int nextWindowID);
+
     virtual bool OnPopupMenu(int iItem);
     virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
 
     virtual bool OnActionMove(const CAction &action);
 
-    virtual bool OnMessageInit(CGUIMessage &message);
     virtual bool OnMessageClick(CGUIMessage &message);
 
     virtual bool OnClickListChannels(CGUIMessage &message);
@@ -59,9 +65,7 @@ namespace PVR
     virtual bool OnClickButtonUseEPG(CGUIMessage &message);
     virtual bool OnClickEPGSourceSpin(CGUIMessage &message);
     virtual bool OnClickButtonGroupManager(CGUIMessage &message);
-    virtual bool OnClickButtonEditChannel(CGUIMessage &message);
-    virtual bool OnClickButtonDeleteChannel(CGUIMessage &message);
-    virtual bool OnClickButtonNewChannel(CGUIMessage &message);
+    virtual bool OnClickButtonNewChannel();
 
     virtual bool PersistChannel(CFileItemPtr pItem, CPVRChannelGroupPtr group, unsigned int *iChannelNumber);
     virtual void SetItemsUnchanged(void);
@@ -72,12 +76,17 @@ namespace PVR
     void SaveList(void);
     void Renumber(void);
     void SetData(int iItem);
+    void RenameChannel(CFileItemPtr pItem);
     bool m_bIsRadio;
     bool m_bMovingMode;
     bool m_bContainsChanges;
+    bool m_bAllowNewChannel;
 
     int m_iSelected;
     CFileItemList* m_channelItems;
     CGUIViewControl m_viewControl;
+
+    typedef std::vector<PVR_CLIENT>::iterator PVR_CLIENT_ITR;
+    std::vector<PVR_CLIENT> m_clientsWithSettingsList;
   };
 }

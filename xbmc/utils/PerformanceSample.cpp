@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,22 +20,22 @@
 
 #include "system.h"
 #include "PerformanceSample.h"
-
-#ifdef _LINUX
-#include "linux/PlatformInclude.h"
-#endif
-
-#include "Application.h"
-#include "log.h"
 #include "TimeUtils.h"
 
-using namespace std;
+#ifdef TARGET_POSIX
+#include "linux/PlatformInclude.h"
+#include "log.h"
+#endif
+
+#ifdef HAS_PERFORMANCE_SAMPLE
+#include "Application.h"
+#include "PerformanceStats.h"
+#endif
 
 int64_t CPerformanceSample::m_tmFreq;
 
-CPerformanceSample::CPerformanceSample(const string &statName, bool bCheckWhenDone)
+CPerformanceSample::CPerformanceSample(const std::string &statName, bool bCheckWhenDone) : m_statName(statName)
 {
-  m_statName = statName;
   m_bCheckWhenDone = bCheckWhenDone;
   if (m_tmFreq == 0LL)
     m_tmFreq = CurrentHostFrequency();
@@ -52,7 +52,7 @@ CPerformanceSample::~CPerformanceSample()
 void CPerformanceSample::Reset()
 {
   m_tmStart = CurrentHostCounter();
-#ifdef _LINUX
+#ifdef TARGET_POSIX
   if (getrusage(RUSAGE_SELF, &m_usage) == -1)
     CLog::Log(LOGERROR,"error %d in getrusage", errno);
 #endif
@@ -63,10 +63,10 @@ void CPerformanceSample::CheckPoint()
 #ifdef HAS_PERFORMANCE_SAMPLE
   int64_t tmNow;
   tmNow = CurrentHostCounter();
-  double elapsed = (double)(tmNow - m_tmStart) / (double)m_tmFreq.QuadPart;
+  double elapsed = (double)(tmNow - m_tmStart) / (double)m_tmFreq;
 
   double dUser=0.0, dSys=0.0;
-#ifdef _LINUX
+#ifdef TARGET_POSIX
   struct rusage usage;
   if (getrusage(RUSAGE_SELF, &usage) == -1)
     CLog::Log(LOGERROR,"error %d in getrusage", errno);

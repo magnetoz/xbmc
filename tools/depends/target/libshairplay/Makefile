@@ -3,7 +3,7 @@ DEPS= ../../Makefile.include
 
 # lib name, version
 LIBNAME=shairplay
-VERSION=139d5ef
+VERSION=498bc5b
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.bz2
 
@@ -11,7 +11,7 @@ ARCHIVE=$(SOURCE).tar.bz2
 CONFIGURE=./configure --prefix=$(PREFIX)
 
 
-LIBDYLIB=$(PLATFORM)/src/lib/.libs/libshairplay.so.0.0.0
+LIBDYLIB=$(PLATFORM)/src/lib/.libs/libshairplay.a
 
 all: .installed-$(PLATFORM)
 

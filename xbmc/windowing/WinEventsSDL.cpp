@@ -1,22 +1,22 @@
 /*
-*      Copyright (C) 2005-2013 Team XBMC
-*      http://www.xbmc.org
-*
-*  This Program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-*
-*  This Program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with XBMC; see the file COPYING.  If not, see
-*  <http://www.gnu.org/licenses/>.
-*
-*/
+ *      Copyright (C) 2005-2013 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "system.h"
 #ifdef HAS_SDL_WIN_EVENTS
@@ -24,26 +24,28 @@
 #include "WinEvents.h"
 #include "WinEventsSDL.h"
 #include "Application.h"
-#include "ApplicationMessenger.h"
+#include "messaging/ApplicationMessenger.h"
+#include "GUIUserMessages.h"
+#include "settings/DisplaySettings.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
-#ifdef HAS_SDL_JOYSTICK
-#include "input/SDLJoystick.h"
-#endif
+#include "input/Key.h"
+#include "input/InputManager.h"
 #include "input/MouseStat.h"
 #include "WindowingFactory.h"
-#if defined(__APPLE__)
-#include "osx/CocoaInterface.h"
+#if defined(TARGET_DARWIN)
+#include "platform/darwin/osx/CocoaInterface.h"
 #endif
 
-#if defined(_LINUX) && !defined(__APPLE__) && !defined(__ANDROID__)
+#if defined(TARGET_POSIX) && !defined(TARGET_DARWIN) && !defined(TARGET_ANDROID)
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
 #include "input/XBMC_keysym.h"
 #include "utils/log.h"
 #endif
 
-#if defined(_LINUX) && !defined(__APPLE__)
+using namespace KODI::MESSAGING;
+
+#if defined(TARGET_POSIX) && !defined(TARGET_DARWIN)
 // The following chunk of code is Linux specific. For keys that have
 // with keysym.sym set to zero it checks the scan code, and sets the sym
 // for some known scan codes. This is mostly the multimedia keys.
@@ -82,6 +84,8 @@ static uint16_t SymMappingsEvdev[][2] =
 , { 179, XBMCK_LAUNCH_MEDIA_SELECT } // Launch media select
 , { 180, XBMCK_BROWSER_HOME }        // Browser home
 , { 181, XBMCK_BROWSER_REFRESH }     // Browser refresh
+, { 208, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
+, { 209, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
 , { 214, XBMCK_ESCAPE }              // Close
 , { 215, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
 , { 216, 0x66 /* 'f' */}             // Forward
@@ -222,19 +226,8 @@ bool CWinEventsSDL::MessagePump()
     {
       case SDL_QUIT:
         if (!g_application.m_bStop) 
-          CApplicationMessenger::Get().Quit();
+          CApplicationMessenger::GetInstance().PostMsg(TMSG_QUIT);
         break;
-
-#ifdef HAS_SDL_JOYSTICK
-      case SDL_JOYBUTTONUP:
-      case SDL_JOYBUTTONDOWN:
-      case SDL_JOYAXISMOTION:
-      case SDL_JOYBALLMOTION:
-      case SDL_JOYHATMOTION:
-        g_Joystick.Update(event);
-        ret = true;
-        break;
-#endif
 
       case SDL_ACTIVEEVENT:
         //If the window was inconified or restored
@@ -253,7 +246,7 @@ bool CWinEventsSDL::MessagePump()
       case SDL_KEYDOWN:
       {
         // process any platform specific shortcuts before handing off to XBMC
-#ifdef __APPLE__
+#ifdef TARGET_DARWIN_OSX
         if (ProcessOSXShortcuts(event))
         {
           ret = true;
@@ -277,7 +270,7 @@ bool CWinEventsSDL::MessagePump()
           mod |= XBMCKMOD_LSUPER;
         newEvent.key.keysym.mod = (XBMCMod) mod;
 
-#if defined(_LINUX) && !defined(__APPLE__)
+#if defined(TARGET_POSIX) && !defined(TARGET_DARWIN)
         // If the keysym.sym is zero try to get it from the scan code
         if (newEvent.key.keysym.sym == 0)
           newEvent.key.keysym.sym = (XBMCKey) SymFromScancode(newEvent.key.keysym.scancode);
@@ -339,8 +332,8 @@ bool CWinEventsSDL::MessagePump()
       {
         if (0 == (SDL_GetAppState() & SDL_APPMOUSEFOCUS))
         {
-          g_Mouse.SetActive(false);
-#if defined(__APPLE__)
+          CInputManager::GetInstance().SetMouseActive(false);
+#if defined(TARGET_DARWIN_OSX)
           // See CApplication::ProcessSlow() for a description as to why we call Cocoa_HideMouse.
           // this is here to restore the pointer when toggling back to window mode from fullscreen.
           Cocoa_ShowMouse();
@@ -388,7 +381,18 @@ bool CWinEventsSDL::MessagePump()
   return ret;
 }
 
-#ifdef __APPLE__
+size_t CWinEventsSDL::GetQueueSize()
+{
+  int ret;
+  SDL_Event event;
+
+  if (-1 == (ret = SDL_PeepEvents(&event, 0, SDL_PEEKEVENT, ~0)))
+    ret = 0;
+
+  return ret;
+}
+
+#ifdef TARGET_DARWIN_OSX
 bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
 {
   static bool shift = false, cmd = false;
@@ -398,11 +402,20 @@ bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
 
   if (cmd && event.key.type == SDL_KEYDOWN)
   {
-    switch(event.key.keysym.sym)
+    char keysymbol = event.key.keysym.sym;
+
+    // if the unicode is in the ascii range
+    // use this instead for getting the real
+    // character based on the used keyboard layout
+    // see http://lists.libsdl.org/pipermail/sdl-libsdl.org/2004-May/043716.html
+    if (!(event.key.keysym.unicode & 0xff80))
+      keysymbol = event.key.keysym.unicode;
+
+    switch(keysymbol)
     {
     case SDLK_q:  // CMD-q to quit
       if (!g_application.m_bStop)
-        CApplicationMessenger::Get().Quit();
+        CApplicationMessenger::GetInstance().PostMsg(TMSG_QUIT);
       return true;
 
     case SDLK_f: // CMD-f to toggle fullscreen
@@ -413,9 +426,12 @@ bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
       g_application.OnAction(CAction(ACTION_TAKE_SCREENSHOT));
       return true;
 
-    case SDLK_h: // CMD-h to hide (but we minimize for now)
+    case SDLK_h: // CMD-h to hide
+      g_Windowing.Hide();
+      return true;
+
     case SDLK_m: // CMD-m to minimize
-      CApplicationMessenger::Get().Minimize();
+      CApplicationMessenger::GetInstance().PostMsg(TMSG_MINIMIZE);
       return true;
 
     default:
@@ -426,7 +442,7 @@ bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
   return false;
 }
 
-#elif defined(_LINUX)
+#elif defined(TARGET_POSIX)
 
 bool CWinEventsSDL::ProcessLinuxShortcuts(SDL_Event& event)
 {

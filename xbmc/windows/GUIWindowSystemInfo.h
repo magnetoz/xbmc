@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,6 +20,9 @@
  *
  */
 
+#include <string>
+#include <vector>
+
 #include "guilib/GUIWindow.h"
 
 class CGUIWindowSystemInfo : public CGUIWindow
@@ -30,9 +33,9 @@ public:
   virtual bool OnMessage(CGUIMessage& message);
   virtual void FrameMove();
 private:
-  unsigned int m_section;
+  int  m_section;
   void ResetLabels();
   void SetControlLabel(int id, const char *format, int label, int info);
-  std::vector<CStdString> m_diskUsage;
+  std::vector<std::string> m_diskUsage;
 };
 

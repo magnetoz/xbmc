@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,6 @@
 #define XML_RENDERER_UUID "UUIDRenderer"
 #define XML_RENDERER_PORT "PortRenderer"
 
-using namespace std;
 using namespace XFILE;
 
 CUPnPSettings::CUPnPSettings()
@@ -46,13 +45,13 @@ CUPnPSettings::~CUPnPSettings()
   Clear();
 }
 
-CUPnPSettings& CUPnPSettings::Get()
+CUPnPSettings& CUPnPSettings::GetInstance()
 {
   static CUPnPSettings sUPnPSettings;
   return sUPnPSettings;
 }
 
-void CUPnPSettings::OnSettingsCleared()
+void CUPnPSettings::OnSettingsUnloaded()
 {
   Clear();
 }

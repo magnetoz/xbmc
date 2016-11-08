@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,13 +20,14 @@
  *
  */
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "guilib/GUIDialog.h"
 #include "addons/IAddon.h"
-#include "utils/Job.h"
 
-class CGUIDialogAddonInfo :
-      public CGUIDialog,
-      public IJobCallback
+class CGUIDialogAddonInfo : public CGUIDialog
 {
 public:
   CGUIDialogAddonInfo(void);
@@ -39,9 +40,7 @@ public:
 
   static bool ShowForItem(const CFileItemPtr& item);
 
-  // job callback
-  void OnJobComplete(unsigned int jobID, bool success, CJob* job);
-protected:
+private:
   void OnInitWindow();
 
   /*! \brief Set the item to display addon info on.
@@ -54,19 +53,32 @@ protected:
   void OnUpdate();
   void OnInstall();
   void OnUninstall();
-  void OnEnable(bool enable);
+  void OnEnableDisable();
   void OnSettings();
-  void OnChangeLog();
-  void OnRollback();
+  void OnSelect();
+  void OnToggleAutoUpdates();
+  int AskForVersion(std::vector<std::pair<ADDON::AddonVersion, std::string>>& versions);
+
+  /*! Returns true if current addon can be opened (i.e is a plugin)*/
+  bool CanOpen() const;
+
+  /*! Returns true if current addon can be run (i.e is a script)*/
+  bool CanRun() const;
+
+  /*!
+   * Returns true if current addon is of a type that can only have one activly
+   * in use at a time and can be changed (e.g skins)*/
+  bool CanUse() const;
+
+  /*! \brief check if the add-on is a dependency of others, and if so prompt the user.
+   \param heading the label for the heading of the prompt dialog
+   \param line2 the action that could not be completed.
+   \return true if prompted, false otherwise.
+   */
+  bool PromptIfDependency(int heading, int line2);
 
   CFileItemPtr m_item;
-  ADDON::AddonPtr m_addon;
   ADDON::AddonPtr m_localAddon;
-  unsigned int m_jobid;
-  bool m_changelog;
-
-  // rollback data
-  void GrabRollbackVersions();
-  std::vector<CStdString> m_rollbackVersions;
+  bool m_addonEnabled;
 };
 

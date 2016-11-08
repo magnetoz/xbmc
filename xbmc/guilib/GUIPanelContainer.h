@@ -7,7 +7,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,6 +47,7 @@ public:
   virtual void OnUp();
   virtual void OnDown();
   virtual bool GetCondition(int condition, int data) const;
+  virtual std::string GetLabel(int info) const;
 protected:
   virtual bool MoveUp(bool wrapAround);
   virtual bool MoveDown(bool wrapAround);
@@ -64,6 +65,9 @@ protected:
   virtual void SelectItem(int item);
   virtual bool HasPreviousPage() const;
   virtual bool HasNextPage() const;
+
+  int GetCurrentRow() const;
+  int GetCurrentColumn() const;
 
   int m_itemsPerRow;
 };

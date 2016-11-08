@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,40 +19,42 @@
  */
 
 #include "HTTPImageHandler.h"
-#include "network/WebServer.h"
 #include "URL.h"
 #include "filesystem/ImageFile.h"
+#include "network/WebServer.h"
 
-using namespace std;
-
-bool CHTTPImageHandler::CheckHTTPRequest(const HTTPRequest &request)
+CHTTPImageHandler::CHTTPImageHandler(const HTTPRequest &request)
+  : CHTTPFileHandler(request)
 {
-  return (request.url.find("/image/") == 0);
-}
+  std::string file;
+  int responseStatus = MHD_HTTP_BAD_REQUEST;
 
-int CHTTPImageHandler::HandleHTTPRequest(const HTTPRequest &request)
-{
-  if (request.url.size() > 7)
+  // resolve the URL into a file path and a HTTP response status
+  if (m_request.pathUrl.size() > 7)
   {
-    m_path = request.url.substr(7);
+    file = m_request.pathUrl.substr(7);
 
     XFILE::CImageFile imageFile;
-    if (imageFile.Exists(m_path))
+    const CURL pathToUrl(file);
+    if (imageFile.Exists(pathToUrl))
     {
-      m_responseCode = MHD_HTTP_OK;
-      m_responseType = HTTPFileDownload;
+      responseStatus = MHD_HTTP_OK;
+      struct __stat64 statBuffer;
+      if (imageFile.Stat(pathToUrl, &statBuffer) == 0)
+      {
+        SetLastModifiedDate(&statBuffer);
+        SetCanBeCached(true);
+      }
     }
     else
-    {
-      m_responseCode = MHD_HTTP_NOT_FOUND;
-      m_responseType = HTTPError;
-    }
-  }
-  else
-  {
-    m_responseCode = MHD_HTTP_BAD_REQUEST;
-    m_responseType = HTTPError;
+      responseStatus = MHD_HTTP_NOT_FOUND;
   }
 
-  return MHD_YES;
+  // set the file and the HTTP response status
+  SetFile(file, responseStatus);
+}
+
+bool CHTTPImageHandler::CanHandleRequest(const HTTPRequest &request)
+{
+  return request.pathUrl.find("/image/") == 0;
 }

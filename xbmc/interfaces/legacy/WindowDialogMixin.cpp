@@ -1,6 +1,6 @@
  /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,17 +13,18 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "WindowDialogMixin.h"
 #include "WindowInterceptor.h"
 
-#include "ApplicationMessenger.h"
+#include "messaging/ApplicationMessenger.h"
 #include "guilib/GUIWindowManager.h"
+
+using namespace KODI::MESSAGING;
 
 namespace XBMCAddon
 {
@@ -31,41 +32,37 @@ namespace XBMCAddon
   {
     void WindowDialogMixin::show()
     {
-      TRACE;
-      ThreadMessage tMsg = {TMSG_GUI_PYTHON_DIALOG, HACK_CUSTOM_ACTION_OPENING, 0u};
-      tMsg.lpVoid = w->window->get();
-      CApplicationMessenger::Get().SendMessage(tMsg, true);
+      XBMC_TRACE;
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_PYTHON_DIALOG, HACK_CUSTOM_ACTION_OPENING, 0, static_cast<void*>(w->window->get()));
     }
 
     void WindowDialogMixin::close()
     {
-      TRACE;
+      XBMC_TRACE;
       w->bModal = false;
       w->PulseActionEvent();
 
-      ThreadMessage tMsg = {TMSG_GUI_PYTHON_DIALOG, HACK_CUSTOM_ACTION_CLOSING, 0};
-      tMsg.lpVoid = w->window->get();
-      CApplicationMessenger::Get().SendMessage(tMsg, true);
+      CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_PYTHON_DIALOG, HACK_CUSTOM_ACTION_CLOSING, 0, static_cast<void*>(w->window->get()));
 
       w->iOldWindowId = 0;
     }
 
-    bool WindowDialogMixin::IsDialogRunning() const { TRACE; return w->window->isActive(); }
+    bool WindowDialogMixin::IsDialogRunning() const { XBMC_TRACE; return w->window->isActive(); }
 
     bool WindowDialogMixin::OnAction(const CAction &action)
     {
-      TRACE;
+      XBMC_TRACE;
       switch (action.GetID())
       {
       case HACK_CUSTOM_ACTION_OPENING:
         {
           // This is from the CGUIPythonWindowXMLDialog::Show_Internal
-          g_windowManager.RouteToWindow(w->window->get());
+          g_windowManager.RegisterDialog(w->window->get());
           // active this dialog...
           CGUIMessage msg(GUI_MSG_WINDOW_INIT,0,0);
           w->OnMessage(msg);
           w->window->setActive(true);
-          // TODO: Figure out how to clean up the CAction
+          //! @todo Figure out how to clean up the CAction
           return true;
         }
         break;

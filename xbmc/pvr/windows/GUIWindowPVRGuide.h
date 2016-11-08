@@ -1,8 +1,7 @@
 #pragma once
-
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,67 +19,87 @@
  *
  */
 
-#include "GUIWindowPVRCommon.h"
-#include "epg/GUIEPGGridContainer.h"
-#include "threads/CriticalSection.h"
-#include "utils/Observer.h"
-#include "../channels/PVRChannelGroup.h"
+#include <atomic>
+#include <memory>
+#include "threads/Thread.h"
+#include "GUIWindowPVRBase.h"
 
 class CSetting;
 
+namespace EPG
+{
+  class CGUIEPGGridContainer;
+}
+
 namespace PVR
 {
-  enum EpgGuideView
+  class CPVRRefreshTimelineItemsThread;
+
+  class CGUIWindowPVRGuide : public CGUIWindowPVRBase
   {
-    GUIDE_VIEW_CHANNEL  = 0,
-    GUIDE_VIEW_NOW,
-    GUIDE_VIEW_NEXT,
-    GUIDE_VIEW_TIMELINE
-  };
-
-  class CGUIWindowPVR;
-
-  class CGUIWindowPVRGuide : public CGUIWindowPVRCommon, public Observer
-  {
-    friend class CGUIWindowPVR;
-
   public:
-    CGUIWindowPVRGuide(CGUIWindowPVR *parent);
+    CGUIWindowPVRGuide(bool bRadio);
     virtual ~CGUIWindowPVRGuide(void);
 
-    void GetContextButtons(int itemNumber, CContextButtons &buttons) const;
-    bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-    void UpdateData(bool bUpdateSelectedFile = true);
-    void Notify(const Observable &obs, const ObservableMessage msg);
-    void SetInvalid(void) { UpdateData(); }
-    void UnregisterObservers(void);
-    void ResetObservers(void);
-    
-    static void SettingOptionsEpgGuideViewFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current);
+    virtual void OnInitWindow() override;
+    virtual void OnDeinitWindow(int nextWindowID) override;
+    virtual bool OnMessage(CGUIMessage& message) override;
+    virtual bool OnAction(const CAction &action) override;
+    virtual void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+    virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
+    virtual void UpdateButtons(void) override;
+    virtual void Notify(const Observable &obs, const ObservableMessage msg) override;
+    virtual void SetInvalid() override;
+
+    bool RefreshTimelineItems();
+
+  protected:
+    virtual void UpdateSelectedItemPath() override;
+    virtual std::string GetDirectoryPath(void) override { return ""; }
+    virtual bool GetDirectory(const std::string &strDirectory, CFileItemList &items) override;
+
+    void ClearData() override;
 
   private:
+    void Init();
+
+    EPG::CGUIEPGGridContainer* GetGridControl();
+
     bool SelectPlayingFile(void);
-    bool IsSelectedButton(CGUIMessage &message) const;
-    bool IsSelectedList(CGUIMessage &message) const;
-    bool OnClickButton(CGUIMessage &message);
-    bool OnClickList(CGUIMessage &message);
-    bool PlayEpgItem(CFileItem *item);
 
     bool OnContextButtonBegin(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonEnd(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonNow(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonInfo(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonPlay(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonStartRecord(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonStopRecord(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonDeleteTimer(CFileItem *item, CONTEXT_BUTTON button);
 
-    void UpdateButtons(void);
-    void UpdateViewChannel(bool bUpdateSelectedFile);
-    void UpdateViewNow(bool bUpdateSelectedFile);
-    void UpdateViewNext(bool bUpdateSelectedFile);
-    void UpdateViewTimeline(bool bUpdateSelectedFile);
+    void GetViewChannelItems(CFileItemList &items);
+    void GetViewNowItems(CFileItemList &items);
+    void GetViewNextItems(CFileItemList &items);
+    void GetViewTimelineItems(CFileItemList &items);
 
-    int               m_iGuideView;
-    CFileItemList    *m_cachedTimeline;
+    void StartRefreshTimelineItemsThread();
+    void StopRefreshTimelineItemsThread();
+
+    std::unique_ptr<CPVRRefreshTimelineItemsThread> m_refreshTimelineItemsThread;
+    std::atomic_bool m_bRefreshTimelineItems;
+
     CPVRChannelGroupPtr m_cachedChannelGroup;
+    std::unique_ptr<CFileItemList> m_newTimeline;
+  };
+
+  class CPVRRefreshTimelineItemsThread : public CThread
+  {
+  public:
+    CPVRRefreshTimelineItemsThread(CGUIWindowPVRGuide *pGuideWindow);
+    virtual ~CPVRRefreshTimelineItemsThread() {}
+
+    virtual void Process();
+
+  private:
+    CGUIWindowPVRGuide *m_pGuideWindow;
   };
 }

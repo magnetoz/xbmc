@@ -28,12 +28,12 @@ namespace PERIPHERALS
   class CPeripheralImon : public CPeripheralHID
   {
   public:
-    CPeripheralImon(const PeripheralScanResult& scanResult);
+    CPeripheralImon(const PeripheralScanResult& scanResult, CPeripheralBus* bus);
     virtual ~CPeripheralImon(void) {}
     virtual bool InitialiseFeature(const PeripheralFeature feature);
-    virtual void OnSettingChanged(const CStdString &strChangedSetting);
+    virtual void OnSettingChanged(const std::string &strChangedSetting);
     virtual void OnDeviceRemoved();
-    virtual void AddSetting(const CStdString &strKey, const CSetting *setting);
+    virtual void AddSetting(const std::string &strKey, const CSetting *setting, int order);
     inline bool IsImonConflictsWithDInput() 
     { return m_bImonConflictsWithDInput;}
     static inline long GetCountOfImonsConflictWithDInput()

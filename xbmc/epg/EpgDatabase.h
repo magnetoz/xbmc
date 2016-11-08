@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,12 +19,18 @@
  *
  */
 
-#include "dbwrappers/Database.h"
+#include <map>
+#include <memory>
+
 #include "XBDateTime.h"
+#include "dbwrappers/Database.h"
+
+#include "Epg.h"
 
 namespace EPG
 {
   class CEpg;
+  typedef std::shared_ptr<CEpg> CEpgPtr;
   class CEpgInfoTag;
   class CEpgContainer;
 
@@ -53,7 +59,7 @@ namespace EPG
      * @brief Get the minimal database version that is required to operate correctly.
      * @return The minimal database version.
      */
-    virtual int GetMinVersion(void) const { return 7; };
+    virtual int GetSchemaVersion(void) const { return 11; };
 
     /*!
      * @brief Get the default sqlite database filename.
@@ -78,10 +84,11 @@ namespace EPG
     virtual bool Delete(const CEpg &table);
 
     /*!
-     * @brief Erase all EPG entries older than 1 day.
+     * @brief Erase all EPG entries with an end time less than the given time.
+     * @param maxEndTime The maximum allowed end time.
      * @return True if the entries were removed successfully, false otherwise.
      */
-    virtual bool DeleteOldEpgEntries(void);
+    virtual bool DeleteEpgEntries(const CDateTime &maxEndTime);
 
     /*!
      * @brief Remove a single EPG entry.
@@ -120,7 +127,7 @@ namespace EPG
      */
     virtual bool PersistLastEpgScanTime(int iEpgId = 0, bool bQueueWrite = false);
 
-    bool Persist(const CEpgContainer &epg);
+    bool Persist(const EPGMAP &epgs);
 
     /*!
      * @brief Persist an EPG table. It's entries are not persisted.
@@ -148,15 +155,19 @@ namespace EPG
   protected:
     /*!
      * @brief Create the EPG database tables.
-     * @return True if the tables were created successfully, false otherwise.
      */
-    virtual bool CreateTables(void);
+    virtual void CreateTables();
+
+    /*!
+     * @brief Create the EPG database analytics.
+     */
+    virtual void CreateAnalytics();
 
     /*!
      * @brief Update an old version of the database.
      * @param version The version to update the database from.
-     * @return True if it was updated successfully, false otherwise.
      */
-    virtual bool UpdateOldVersion(int version);
+    virtual void UpdateTables(int version);
+    virtual int GetMinSchemaVersion() const { return 4; }
   };
 }

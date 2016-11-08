@@ -1,6 +1,16 @@
 /*
+ *  Portions copied from DirectFB:
+ *      Copyright (C) 2001-2009  The world wide DirectFB Open Source Community (directfb.org)
+ *      Copyright (C) 2000-2004  Convergence (integrated media) GmbH
+ *      All rights reserved.
+ *      Written by Denis Oliver Kropp <dok@directfb.org>,
+ *      Andreas Hundt <andi@fischlustig.de>,
+ *      Sven Neumann <neo@directfb.org>,
+ *      Ville Syrjälä <syrjala@sci.fi> and
+ *      Claudio Ciccani <klan@users.sf.net>.
+ *
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,34 +26,7 @@
  *  along with XBMC; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
- *  Portions copied from DirectFB:
-
- (c) Copyright 2001-2009  The world wide DirectFB Open Source Community (directfb.org)
- (c) Copyright 2000-2004  Convergence (integrated media) GmbH
- All rights reserved.
-
- Written by Denis Oliver Kropp <dok@directfb.org>,
- Andreas Hundt <andi@fischlustig.de>,
- Sven Neumann <neo@directfb.org>,
- Ville Syrjälä <syrjala@sci.fi> and
- Claudio Ciccani <klan@users.sf.net>.
-
- This library is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License as published by the Free Software Foundation; either
- version 2 of the License, or (at your option) any later version.
-
- This library is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
-
- You should have received a copy of the GNU Lesser General Public
- License along with this library; if not, write to the
- Free Software Foundation, Inc., 59 Temple Place - Suite 330,
- Boston, MA 02111-1307, USA.
  */
-
 #include "system.h"
 #if defined(HAS_LINUX_EVENTS)
 
@@ -55,6 +38,10 @@ typedef unsigned long kernel_ulong_t;
 #endif
 
 #include <linux/input.h>
+
+#if defined(HAVE_LIBUDEV)
+#include <libudev.h>
+#endif
 
 #ifndef EV_CNT
 #define EV_CNT (EV_MAX+1)
@@ -109,6 +96,9 @@ typedef unsigned long kernel_ulong_t;
 #include "LinuxInputDevices.h"
 #include "input/MouseStat.h"
 #include "utils/log.h"
+#include "input/touch/generic/GenericTouchActionHandler.h"
+#include "input/touch/generic/GenericTouchInputHandler.h"
+#include "settings/AdvancedSettings.h"
 
 #ifndef BITS_PER_LONG
 #define BITS_PER_LONG        (sizeof(long) * 8)
@@ -120,184 +110,172 @@ typedef unsigned long kernel_ulong_t;
 #undef test_bit
 #define test_bit(bit, array) ((array[LONG(bit)] >> OFF(bit)) & 1)
 
-#ifndef D_ARRAY_SIZE
-#define D_ARRAY_SIZE(array)        ((int)(sizeof(array) / sizeof((array)[0])))
-#endif
-
 #define MAX_LINUX_INPUT_DEVICES 16
 
-static const
-XBMCKey basic_keycodes[] = { XBMCK_UNKNOWN, XBMCK_ESCAPE, XBMCK_1, XBMCK_2, XBMCK_3,
-    XBMCK_4, XBMCK_5, XBMCK_6, XBMCK_7, XBMCK_8, XBMCK_9, XBMCK_0, XBMCK_MINUS,
-    XBMCK_EQUALS, XBMCK_BACKSPACE,
-
-    XBMCK_TAB, XBMCK_q, XBMCK_w, XBMCK_e, XBMCK_r, XBMCK_t, XBMCK_y, XBMCK_u, XBMCK_i,
-    XBMCK_o, XBMCK_p, XBMCK_LEFTBRACKET, XBMCK_RIGHTBRACKET, XBMCK_RETURN,
-
-    XBMCK_LCTRL, XBMCK_a, XBMCK_s, XBMCK_d, XBMCK_f, XBMCK_g, XBMCK_h, XBMCK_j,
-    XBMCK_k, XBMCK_l, XBMCK_SEMICOLON, XBMCK_QUOTE, XBMCK_BACKQUOTE,
-
-    XBMCK_LSHIFT, XBMCK_BACKSLASH, XBMCK_z, XBMCK_x, XBMCK_c, XBMCK_v, XBMCK_b,
-    XBMCK_n, XBMCK_m, XBMCK_COMMA, XBMCK_PERIOD, XBMCK_SLASH, XBMCK_RSHIFT,
-    XBMCK_KP_MULTIPLY, XBMCK_LALT, XBMCK_SPACE, XBMCK_CAPSLOCK,
-
-    XBMCK_F1, XBMCK_F2, XBMCK_F3, XBMCK_F4, XBMCK_F5, XBMCK_F6, XBMCK_F7, XBMCK_F8,
-    XBMCK_F9, XBMCK_F10, XBMCK_NUMLOCK, XBMCK_SCROLLOCK,
-
-    XBMCK_KP7, XBMCK_KP8, XBMCK_KP9, XBMCK_KP_MINUS, XBMCK_KP4, XBMCK_KP5,
-    XBMCK_KP6, XBMCK_KP_PLUS, XBMCK_KP1, XBMCK_KP2, XBMCK_KP3, XBMCK_KP0,
-    XBMCK_KP_PERIOD,
-
-    /*KEY_103RD,*/XBMCK_BACKSLASH,
-    /*KEY_F13,*/XBMCK_F13,
-    /*KEY_102ND*/XBMCK_LESS,
-
-    XBMCK_F11, XBMCK_F12, XBMCK_F14, XBMCK_F15,
-    XBMCK_UNKNOWN,XBMCK_UNKNOWN,XBMCK_UNKNOWN, /*XBMCK_F16, XBMCK_F17, XBMCK_F18,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, /*XBMCK_F19, XBMCK_F20,*/
-
-    XBMCK_KP_ENTER, XBMCK_RCTRL, XBMCK_KP_DIVIDE, XBMCK_PRINT, XBMCK_MODE,
-
-    /*KEY_LINEFEED*/XBMCK_UNKNOWN,
-
-    XBMCK_HOME, XBMCK_UP, XBMCK_PAGEUP, XBMCK_LEFT, XBMCK_RIGHT, XBMCK_END,
-    XBMCK_DOWN, XBMCK_PAGEDOWN, XBMCK_INSERT, XBMCK_DELETE,
-
-    /*KEY_MACRO,*/XBMCK_UNKNOWN,
-
-    XBMCK_VOLUME_MUTE, XBMCK_VOLUME_DOWN, XBMCK_VOLUME_UP, XBMCK_POWER, XBMCK_KP_EQUALS,
-
-    /*KEY_KPPLUSMINUS,*/XBMCK_UNKNOWN,
-
-    XBMCK_PAUSE, XBMCK_UNKNOWN, XBMCK_UNKNOWN, /*DFB_FUNCTION_KEY(21), DFB_FUNCTION_KEY(22), */
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, /*DFB_FUNCTION_KEY(23), DFB_FUNCTION_KEY(24),*/
-
-    /*DIKI_KP_SEPARATOR*/XBMCK_UNKNOWN, XBMCK_LMETA, XBMCK_RMETA, XBMCK_LSUPER,
-
-    XBMCK_MEDIA_STOP,
-
-    /*DIKS_AGAIN, DIKS_PROPS, DIKS_UNDO, DIKS_FRONT, DIKS_COPY,
-     DIKS_OPEN, DIKS_PASTE, DIKS_FIND, DIKS_CUT,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    XBMCK_HELP,
-
-    /* DIKS_MENU, DIKS_CALCULATOR, DIKS_SETUP, */
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /*KEY_SLEEP, KEY_WAKEUP, KEY_FILE, KEY_SENDFILE, KEY_DELETEFILE,
-     KEY_XFER,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-    XBMCK_UNKNOWN,
-
-    /*KEY_PROG1, KEY_PROG2,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /*DIKS_INTERNET*/ XBMCK_UNKNOWN,
-
-    /*KEY_MSDOS, KEY_COFFEE, KEY_DIRECTION, KEY_CYCLEWINDOWS,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /*DIKS_MAIL*/ XBMCK_UNKNOWN,
-
-    /*KEY_BOOKMARKS, KEY_COMPUTER, */
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /*DIKS_BACK, DIKS_FORWARD,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /*KEY_CLOSECD, KEY_EJECTCD, KEY_EJECTCLOSECD,*/
-    XBMCK_EJECT, XBMCK_EJECT, XBMCK_EJECT,
-
-    XBMCK_MEDIA_NEXT_TRACK, XBMCK_MEDIA_PLAY_PAUSE, XBMCK_MEDIA_PREV_TRACK, XBMCK_MEDIA_STOP, XBMCK_RECORD,
-    XBMCK_REWIND, XBMCK_PHONE,
-
-    /*KEY_ISO,*/XBMCK_UNKNOWN,
-    /*KEY_CONFIG,*/XBMCK_UNKNOWN,
-    /*KEY_HOMEPAGE, KEY_REFRESH,*/XBMCK_UNKNOWN, XBMCK_SHUFFLE,
-
-    /*DIKS_EXIT*/XBMCK_UNKNOWN, /*KEY_MOVE,*/XBMCK_UNKNOWN, /*DIKS_EDITOR*/XBMCK_UNKNOWN,
-
-    /*KEY_SCROLLUP,*/XBMCK_PAGEUP,
-    /*KEY_SCROLLDOWN,*/XBMCK_PAGEDOWN,
-    /*KEY_KPLEFTPAREN,*/XBMCK_UNKNOWN,
-    /*KEY_KPRIGHTPAREN,*/XBMCK_UNKNOWN,
-
-    /* unused codes 181-182: */
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-/*
-    DFB_FUNCTION_KEY(13), DFB_FUNCTION_KEY(14), DFB_FUNCTION_KEY(15),
-    DFB_FUNCTION_KEY(16), DFB_FUNCTION_KEY(17), DFB_FUNCTION_KEY(18),
-    DFB_FUNCTION_KEY(19), DFB_FUNCTION_KEY(20), DFB_FUNCTION_KEY(21),
-    DFB_FUNCTION_KEY(22), DFB_FUNCTION_KEY(23), DFB_FUNCTION_KEY(24),
-*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /* unused codes 195-199: */
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /* KEY_PLAYCD, KEY_PAUSECD */
-    XBMCK_PLAY, XBMCK_PAUSE,
-
-    /*KEY_PROG3, KEY_PROG4,*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    XBMCK_UNKNOWN,
-
-    /*KEY_SUSPEND, KEY_CLOSE*/
-    XBMCK_UNKNOWN, XBMCK_UNKNOWN,
-
-    /* KEY_PLAY */
-    XBMCK_PLAY,
-
-    /* KEY_FASTFORWARD */
-    XBMCK_FASTFORWARD,
-
-    /* KEY_BASSBOOST */
-    XBMCK_UNKNOWN,
-
-    /* KEY_PRINT */
-    XBMCK_PRINT,
-
-    /* KEY_HP             */XBMCK_UNKNOWN,
-    /* KEY_CAMERA         */XBMCK_UNKNOWN,
-    /* KEY_SOUND          */XBMCK_UNKNOWN,
-    /* KEY_QUESTION       */XBMCK_HELP,
-    /* KEY_EMAIL          */XBMCK_UNKNOWN,
-    /* KEY_CHAT           */XBMCK_UNKNOWN,
-    /* KEY_SEARCH         */XBMCK_UNKNOWN,
-    /* KEY_CONNECT        */XBMCK_UNKNOWN,
-    /* KEY_FINANCE        */XBMCK_UNKNOWN,
-    /* KEY_SPORT          */XBMCK_UNKNOWN,
-    /* KEY_SHOP           */XBMCK_UNKNOWN,
-    /* KEY_ALTERASE       */XBMCK_UNKNOWN,
-    /* KEY_CANCEL         */XBMCK_UNKNOWN,
-    /* KEY_BRIGHTNESSDOWN */XBMCK_UNKNOWN,
-    /* KEY_BRIGHTNESSUP   */XBMCK_UNKNOWN,
-    /* KEY_MEDIA          */XBMCK_UNKNOWN, };
-
-/*
-  In the future we may want it...
+typedef struct {
+  unsigned short Key;
+  XBMCKey xbmcKey;
+} KeyMap;
 
 static const
-int ext_keycodes[] = { DIKS_OK, DIKS_SELECT, DIKS_GOTO, DIKS_CLEAR,
-    DIKS_POWER2, DIKS_OPTION, DIKS_INFO, DIKS_TIME, DIKS_VENDOR, DIKS_ARCHIVE,
-    DIKS_PROGRAM, DIKS_CHANNEL, DIKS_FAVORITES, DIKS_EPG, DIKS_PVR, DIKS_MHP,
-    DIKS_LANGUAGE, DIKS_TITLE, DIKS_SUBTITLE, DIKS_ANGLE, DIKS_ZOOM, DIKS_MODE,
-    DIKS_KEYBOARD, DIKS_SCREEN, DIKS_PC, DIKS_TV, DIKS_TV2, DIKS_VCR,
-    DIKS_VCR2, DIKS_SAT, DIKS_SAT2, DIKS_CD, DIKS_TAPE, DIKS_RADIO, DIKS_TUNER,
-    DIKS_PLAYER, DIKS_TEXT, DIKS_DVD, DIKS_AUX, DIKS_MP3, DIKS_AUDIO,
-    DIKS_VIDEO, DIKS_DIRECTORY, DIKS_LIST, DIKS_MEMO, DIKS_CALENDAR, DIKS_RED,
-    DIKS_GREEN, DIKS_YELLOW, DIKS_BLUE, DIKS_CHANNEL_UP, DIKS_CHANNEL_DOWN,
-    DIKS_FIRST, DIKS_LAST, DIKS_AB, DIKS_NEXT, DIKS_RESTART, DIKS_SLOW,
-    DIKS_SHUFFLE, DIKS_FASTFORWARD, DIKS_PREVIOUS, DIKS_NEXT, DIKS_DIGITS,
-    DIKS_TEEN, DIKS_TWEN, DIKS_BREAK };
-*/
+KeyMap keyMap[] = {
+  { KEY_ESC           , XBMCK_ESCAPE      },
+  { KEY_1             , XBMCK_1           },
+  { KEY_2             , XBMCK_2           },
+  { KEY_3             , XBMCK_3           },
+  { KEY_4             , XBMCK_4           },
+  { KEY_5             , XBMCK_5           },
+  { KEY_6             , XBMCK_6           },
+  { KEY_7             , XBMCK_7           },
+  { KEY_8             , XBMCK_8           },
+  { KEY_9             , XBMCK_9           },
+  { KEY_0             , XBMCK_0           },
+  { KEY_MINUS         , XBMCK_MINUS       },
+  { KEY_EQUAL         , XBMCK_EQUALS      },
+  { KEY_BACKSPACE     , XBMCK_BACKSPACE   },
+  { KEY_TAB           , XBMCK_TAB         },
+  { KEY_Q             , XBMCK_q           },
+  { KEY_W             , XBMCK_w           },
+  { KEY_E             , XBMCK_e           },
+  { KEY_R             , XBMCK_r           },
+  { KEY_T             , XBMCK_t           },
+  { KEY_Y             , XBMCK_y           },
+  { KEY_U             , XBMCK_u           },
+  { KEY_I             , XBMCK_i           },
+  { KEY_O             , XBMCK_o           },
+  { KEY_P             , XBMCK_p           },
+  { KEY_LEFTBRACE     , XBMCK_LEFTBRACKET },
+  { KEY_RIGHTBRACE    , XBMCK_RIGHTBRACKET},
+  { KEY_ENTER         , XBMCK_RETURN      },
+  { KEY_LEFTCTRL      , XBMCK_LCTRL       },
+  { KEY_A             , XBMCK_a           },
+  { KEY_S             , XBMCK_s           },
+  { KEY_D             , XBMCK_d           },
+  { KEY_F             , XBMCK_f           },
+  { KEY_G             , XBMCK_g           },
+  { KEY_H             , XBMCK_h           },
+  { KEY_J             , XBMCK_j           },
+  { KEY_K             , XBMCK_k           },
+  { KEY_L             , XBMCK_l           },
+  { KEY_SEMICOLON     , XBMCK_SEMICOLON   },
+  { KEY_APOSTROPHE    , XBMCK_QUOTE       },
+  { KEY_GRAVE         , XBMCK_BACKQUOTE   },
+  { KEY_LEFTSHIFT     , XBMCK_LSHIFT      },
+  { KEY_BACKSLASH     , XBMCK_BACKSLASH   },
+  { KEY_Z             , XBMCK_z           },
+  { KEY_X             , XBMCK_x           },
+  { KEY_C             , XBMCK_c           },
+  { KEY_V             , XBMCK_v           },
+  { KEY_B             , XBMCK_b           },
+  { KEY_N             , XBMCK_n           },
+  { KEY_M             , XBMCK_m           },
+  { KEY_COMMA         , XBMCK_COMMA       },
+  { KEY_DOT           , XBMCK_PERIOD      },
+  { KEY_SLASH         , XBMCK_SLASH       },
+  { KEY_RIGHTSHIFT    , XBMCK_RSHIFT      },
+  { KEY_KPASTERISK    , XBMCK_KP_MULTIPLY },
+  { KEY_LEFTALT       , XBMCK_LALT        },
+  { KEY_SPACE         , XBMCK_SPACE       },
+  { KEY_CAPSLOCK      , XBMCK_CAPSLOCK    },
+  { KEY_F1            , XBMCK_F1          },
+  { KEY_F2            , XBMCK_F2          },
+  { KEY_F3            , XBMCK_F3          },
+  { KEY_F4            , XBMCK_F4          },
+  { KEY_F5            , XBMCK_F5          },
+  { KEY_F6            , XBMCK_F6          },
+  { KEY_F7            , XBMCK_F7          },
+  { KEY_F8            , XBMCK_F8          },
+  { KEY_F9            , XBMCK_F9          },
+  { KEY_F10           , XBMCK_F10         },
+  { KEY_NUMLOCK       , XBMCK_NUMLOCK     },
+  { KEY_SCROLLLOCK    , XBMCK_SCROLLOCK   },
+  { KEY_KP7           , XBMCK_KP7         },
+  { KEY_KP8           , XBMCK_KP8         },
+  { KEY_KP9           , XBMCK_KP9         },
+  { KEY_KPMINUS       , XBMCK_KP_MINUS    },
+  { KEY_KP4           , XBMCK_KP4         },
+  { KEY_KP5           , XBMCK_KP5         },
+  { KEY_KP6           , XBMCK_KP6         },
+  { KEY_KPPLUS        , XBMCK_KP_PLUS     },
+  { KEY_KP1           , XBMCK_KP1         },
+  { KEY_KP2           , XBMCK_KP2         },
+  { KEY_KP3           , XBMCK_KP3         },
+  { KEY_KP0           , XBMCK_KP0         },
+  { KEY_KPDOT         , XBMCK_KP_PERIOD   },
+  { 84                , XBMCK_BACKSLASH   },
+  { 85                , XBMCK_F13         },
+  { 86                , XBMCK_LESS        },
+  { KEY_F11           , XBMCK_F11         },
+  { KEY_F12           , XBMCK_F12         },
+  { 89                , XBMCK_F14         },
+  { 90                , XBMCK_F15         },
+  { KEY_KPENTER       , XBMCK_KP_ENTER    },
+  { KEY_RIGHTCTRL     , XBMCK_RCTRL       },
+  { KEY_KPSLASH       , XBMCK_KP_DIVIDE   },
+  { KEY_SYSRQ         , XBMCK_PRINT       },
+  { KEY_RIGHTALT      , XBMCK_MODE        },
+  { KEY_HOME          , XBMCK_HOME        },
+  { KEY_UP            , XBMCK_UP          },
+  { KEY_PAGEUP        , XBMCK_PAGEUP      },
+  { KEY_LEFT          , XBMCK_LEFT        },
+  { KEY_RIGHT         , XBMCK_RIGHT       },
+  { KEY_END           , XBMCK_END         },
+  { KEY_DOWN          , XBMCK_DOWN        },
+  { KEY_PAGEDOWN      , XBMCK_PAGEDOWN    },
+  { KEY_INSERT        , XBMCK_INSERT      },
+  { KEY_DELETE        , XBMCK_DELETE      },
+  { KEY_MUTE          , XBMCK_VOLUME_MUTE },
+  { KEY_VOLUMEDOWN    , XBMCK_VOLUME_DOWN },
+  { KEY_VOLUMEUP      , XBMCK_VOLUME_UP   },
+  { KEY_POWER         , XBMCK_POWER       },
+  { KEY_KPEQUAL       , XBMCK_KP_EQUALS   },
+  { KEY_PAUSE         , XBMCK_PAUSE       },
+  { KEY_PAUSECD       , XBMCK_PAUSE       },
+  { KEY_LEFTMETA      , XBMCK_LMETA       },
+  { KEY_RIGHTMETA     , XBMCK_RMETA       },
+  { KEY_COMPOSE       , XBMCK_LSUPER      },
+  { KEY_STOP          , XBMCK_MEDIA_STOP  },
+  { KEY_HELP          , XBMCK_HELP        },
+  { KEY_MENU          , XBMCK_MENU        },
+  { KEY_CLOSECD       , XBMCK_EJECT       },
+  { KEY_EJECTCD       , XBMCK_EJECT       },
+  { KEY_EJECTCLOSECD  , XBMCK_EJECT       },
+  { KEY_NEXTSONG      , XBMCK_MEDIA_NEXT_TRACK},
+  { KEY_PLAYPAUSE     , XBMCK_MEDIA_PLAY_PAUSE},
+  { KEY_PREVIOUSSONG  , XBMCK_MEDIA_PREV_TRACK},
+  { KEY_STOPCD        , XBMCK_MEDIA_STOP  },
+  { KEY_RECORD        , XBMCK_RECORD      },
+  { KEY_REWIND        , XBMCK_REWIND      },
+  { KEY_PHONE         , XBMCK_PHONE       },
+  { KEY_REFRESH       , XBMCK_SHUFFLE     },
+  { KEY_SCROLLUP      , XBMCK_PAGEUP      },
+  { KEY_SCROLLDOWN    , XBMCK_PAGEDOWN    },
+  { KEY_PLAY          , XBMCK_PLAY        },
+  { KEY_PLAYCD        , XBMCK_PLAY        },
+  { KEY_FASTFORWARD   , XBMCK_FASTFORWARD },
+  { KEY_PRINT         , XBMCK_PRINT       },
+  { KEY_QUESTION      , XBMCK_HELP        },
+  { KEY_BACK          , XBMCK_BACKSPACE   },
+  { KEY_ZOOM          , XBMCK_ZOOM        },
+  { KEY_TEXT          , XBMCK_TEXT        },
+  { KEY_FAVORITES     , XBMCK_FAVORITES   },
+  { KEY_RED           , XBMCK_RED         },
+  { KEY_GREEN         , XBMCK_GREEN       },
+  { KEY_YELLOW        , XBMCK_YELLOW      },
+  { KEY_BLUE          , XBMCK_BLUE        },
+  { KEY_HOMEPAGE      , XBMCK_HOMEPAGE    },
+  { KEY_MAIL          , XBMCK_LAUNCH_MAIL },
+  { KEY_SEARCH        , XBMCK_BROWSER_SEARCH},
+  { KEY_FILE          , XBMCK_LAUNCH_FILE_BROWSER},
+  { KEY_SELECT        , XBMCK_RETURN      },
+  { KEY_CONFIG        , XBMCK_CONFIG      },
+  { KEY_EPG           , XBMCK_EPG         },
+  // The Little Black Box Remote Additions
+  { 384               , XBMCK_LEFT        }, // Red
+  { 378               , XBMCK_RIGHT       }, // Green
+  { 381               , XBMCK_UP          }, // Yellow
+  { 366               , XBMCK_DOWN        }, // Blue
+};
 
 typedef enum
 {
@@ -305,7 +283,8 @@ typedef enum
   LI_DEVICE_MOUSE    = 1,
   LI_DEVICE_JOYSTICK = 2,
   LI_DEVICE_KEYBOARD = 4,
-  LI_DEVICE_REMOTE   = 8
+  LI_DEVICE_REMOTE   = 8,
+  LI_DEVICE_MULTITOUCH = 16
 } LinuxInputDeviceType;
 
 typedef enum
@@ -317,12 +296,12 @@ typedef enum
 
 static char remoteStatus = 0xFF; // paired, battery OK
 
-CLinuxInputDevice::CLinuxInputDevice(const std::string fileName, int index)
+CLinuxInputDevice::CLinuxInputDevice(const std::string& fileName, int index):
+  m_fileName(fileName)
 {
   m_fd = -1;
   m_vt_fd = -1;
   m_hasLeds = false;
-  m_fileName = fileName;
   m_ledState[0] = false;
   m_ledState[1] = false;
   m_ledState[2] = false;
@@ -339,6 +318,10 @@ CLinuxInputDevice::CLinuxInputDevice(const std::string fileName, int index)
   m_deviceMaxKeyCode = 0;
   m_deviceMaxAxis = 0;
   m_bUnplugged = false;
+  m_mt_currentSlot = 0;
+  memset(&m_mt_x, 0, sizeof(m_mt_x));
+  memset(&m_mt_y, 0, sizeof(m_mt_y));
+  memset(&m_mt_event, 0, sizeof(m_mt_event));
 
   Open();
 }
@@ -353,16 +336,11 @@ CLinuxInputDevice::~CLinuxInputDevice()
  */
 XBMCKey CLinuxInputDevice::TranslateKey(unsigned short code)
 {
-  if (code < D_ARRAY_SIZE(basic_keycodes))
-    return basic_keycodes[code];
-
-/*
-  In the future we may want it...
-
-  if (code >= KEY_OK)
-    if (code - KEY_OK < D_ARRAY_SIZE(ext_keycodes))
-      return ext_keycodes[code - KEY_OK];
-*/
+  for (size_t index = 0; index < sizeof(keyMap) / sizeof(KeyMap); index++)
+  {
+    if (code == keyMap[index].Key)
+      return keyMap[index].xbmcKey;
+  }
 
   return XBMCK_UNKNOWN;
 }
@@ -559,10 +537,14 @@ bool CLinuxInputDevice::KeyEvent(const struct input_event& levt, XBMC_Event& dev
     XBMCKey key = TranslateKey(code);
 
     if (key == XBMCK_UNKNOWN)
+    {
+      CLog::Log(LOGDEBUG, "CLinuxInputDevice::KeyEvent: TranslateKey returned XBMCK_UNKNOWN from code(%d)", code);
       return false;
+    }
 
     devt.type = levt.value ? XBMC_KEYDOWN : XBMC_KEYUP;
     devt.key.type = devt.type;
+    // warning, key.keysym.scancode is unsigned char so 0 - 255 only
     devt.key.keysym.scancode = code;
     devt.key.keysym.sym = key;
     devt.key.keysym.mod = UpdateModifiers(devt);
@@ -597,22 +579,27 @@ bool CLinuxInputDevice::KeyEvent(const struct input_event& levt, XBMC_Event& dev
  */
 bool CLinuxInputDevice::RelEvent(const struct input_event& levt, XBMC_Event& devt)
 {
+  bool motion = false;
+  bool wheel  = false;
+
   switch (levt.code)
   {
   case REL_X:
     m_mouseX += levt.value;
     devt.motion.xrel = levt.value;
     devt.motion.yrel = 0;
+    motion = true;
     break;
-
   case REL_Y:
     m_mouseY += levt.value;
     devt.motion.xrel = 0;
     devt.motion.yrel = levt.value;
+    motion = true;
     break;
-
-  case REL_Z:
   case REL_WHEEL:
+    wheel = (levt.value != 0); // process wheel event only when there was some delta
+    break;
+  case REL_Z:
   default:
     CLog::Log(LOGWARNING, "CLinuxInputDevice::RelEvent: Unknown rel event code: %d\n", levt.code);
     return false;
@@ -627,13 +614,35 @@ bool CLinuxInputDevice::RelEvent(const struct input_event& levt, XBMC_Event& dev
   m_mouseY = std::max(0, m_mouseY);
 
 
-  devt.type = XBMC_MOUSEMOTION;
-  devt.motion.type = XBMC_MOUSEMOTION;
-  devt.motion.x = m_mouseX;
-  devt.motion.y = m_mouseY;
-  devt.motion.state = 0;
-  devt.motion.which = m_deviceIndex;
+  if (motion)
+  {
+    devt.type = XBMC_MOUSEMOTION;
+    devt.motion.type = XBMC_MOUSEMOTION;
+    devt.motion.x = m_mouseX;
+    devt.motion.y = m_mouseY;
+    devt.motion.state = 0;
+    devt.motion.which = m_deviceIndex;
+  }
+  else if (wheel)
+  {
+     devt.type = XBMC_MOUSEBUTTONUP;
+     devt.button.state = XBMC_RELEASED;
+     devt.button.type = devt.type;
+     devt.button.x = m_mouseX;
+     devt.button.y = m_mouseY;
+     devt.button.button = (levt.value<0) ? XBMC_BUTTON_WHEELDOWN:XBMC_BUTTON_WHEELUP;
 
+     /* but WHEEL up enent to the queue */
+     m_equeue.push_back(devt);
+
+     /* prepare and return WHEEL down event */
+     devt.button.state = XBMC_PRESSED;
+     devt.type = XBMC_MOUSEBUTTONDOWN;
+  }
+  else
+  {
+     return false;
+  }
 
   return true;
 }
@@ -646,13 +655,13 @@ bool CLinuxInputDevice::AbsEvent(const struct input_event& levt, XBMC_Event& dev
   switch (levt.code)
   {
   case ABS_X:
-    m_mouseX = levt.value;
+    m_mouseX = (int)((float)levt.value * g_advancedSettings.m_screenAlign_xStretchFactor) + g_advancedSettings.m_screenAlign_xOffset; // stretch and shift touch x coordinates
     break;
 
   case ABS_Y:
-    m_mouseY = levt.value;
+    m_mouseY = (int)((float)levt.value * g_advancedSettings.m_screenAlign_yStretchFactor) + g_advancedSettings.m_screenAlign_yOffset; // stretch and shift touch y coordinates
     break;
-  
+
   case ABS_MISC:
     remoteStatus = levt.value & 0xFF;
     break;
@@ -675,11 +684,102 @@ bool CLinuxInputDevice::AbsEvent(const struct input_event& levt, XBMC_Event& dev
 }
 
 /*
+ * Process multi-touch absolute events
+ * Only store the information, do not fire event until we receive an EV_SYN
+ */
+bool CLinuxInputDevice::mtAbsEvent(const struct input_event& levt)
+{
+  switch (levt.code)
+  {
+  case ABS_MT_SLOT:
+    m_mt_currentSlot = levt.value;
+    break;
+
+  case ABS_MT_TRACKING_ID:
+    if (m_mt_currentSlot < TOUCH_MAX_POINTERS)
+    {
+      if (levt.value == -1)
+        m_mt_event[m_mt_currentSlot] = TouchInputUp;
+      else
+        m_mt_event[m_mt_currentSlot] = TouchInputDown;
+    }
+    break;
+
+  case ABS_MT_POSITION_X:
+    if (m_mt_currentSlot < TOUCH_MAX_POINTERS)
+    {
+      m_mt_x[m_mt_currentSlot] = (int)((float)levt.value * g_advancedSettings.m_screenAlign_xStretchFactor) + g_advancedSettings.m_screenAlign_xOffset; // stretch and shift touch x coordinates
+      if (m_mt_event[m_mt_currentSlot] == TouchInputUnchanged)
+        m_mt_event[m_mt_currentSlot] = TouchInputMove;
+    }
+    break;
+
+  case ABS_MT_POSITION_Y:
+    if (m_mt_currentSlot < TOUCH_MAX_POINTERS)
+    {
+      m_mt_y[m_mt_currentSlot] = (int)((float)levt.value * g_advancedSettings.m_screenAlign_yStretchFactor) + g_advancedSettings.m_screenAlign_yOffset; // stretch and shift touch y coordinates;
+      if (m_mt_event[m_mt_currentSlot] == TouchInputUnchanged)
+        m_mt_event[m_mt_currentSlot] = TouchInputMove;
+    }
+    break;
+
+  default:
+    return false;
+  }
+
+  return true;
+}
+
+/*
+ * Process stored multi-touch events
+ */
+bool CLinuxInputDevice::mtSynEvent(const struct input_event& levt)
+{
+  float size = 10.0f;
+  int64_t nanotime = levt.time.tv_sec * 1000000000LL + levt.time.tv_usec * 1000LL;
+
+  for (int ptr=0; ptr < TOUCH_MAX_POINTERS; ptr++)
+  {
+    /* While the comments of ITouchInputHandler::UpdateTouchPointer() say
+       "If there's an event for every touch action this method does not need to be called at all"
+       gesture detection currently doesn't work properly without this call. */
+    CGenericTouchInputHandler::GetInstance().UpdateTouchPointer(ptr, m_mt_x[ptr], m_mt_y[ptr], nanotime, size);
+  }
+
+  for (int ptr=0; ptr < TOUCH_MAX_POINTERS; ptr++)
+  {
+    if (m_mt_event[ptr] != TouchInputUnchanged)
+    {
+      CGenericTouchInputHandler::GetInstance().HandleTouchInput(m_mt_event[ptr], m_mt_x[ptr], m_mt_y[ptr], nanotime, ptr, size);
+      m_mt_event[ptr] = TouchInputUnchanged;
+    }
+  }
+
+  return true;
+}
+
+/*
  * Translates a Linux input event into a DirectFB input event.
  */
 bool CLinuxInputDevice::TranslateEvent(const struct input_event& levt,
     XBMC_Event& devt)
 {
+  if (m_devicePreferredId == LI_DEVICE_MULTITOUCH)
+  {
+    switch (levt.type)
+    {
+    case EV_ABS:
+      return mtAbsEvent(levt);
+
+    case EV_SYN:
+      return mtSynEvent(levt);
+
+    default:
+      // Ignore legacy (key) events
+      return false;
+    }
+  }
+
   switch (levt.type)
   {
   case EV_KEY:
@@ -732,56 +832,64 @@ XBMC_Event CLinuxInputDevice::ReadEvent()
 
   XBMC_Event devt;
 
-  while (1)
+  if (m_equeue.empty())
   {
-    bzero(&levt, sizeof(levt));
-
-    bzero(&devt, sizeof(devt));
-    devt.type = XBMC_NOEVENT;
-
-    if(m_devicePreferredId == LI_DEVICE_NONE)
-      return devt;
-
-    readlen = read(m_fd, &levt, sizeof(levt));
-
-    if (readlen <= 0)
+    while (1)
     {
-      if (errno == ENODEV)
+      bzero(&levt, sizeof(levt));
+
+      bzero(&devt, sizeof(devt));
+      devt.type = XBMC_NOEVENT;
+
+      if(m_devicePreferredId == LI_DEVICE_NONE)
+        return devt;
+
+      readlen = read(m_fd, &levt, sizeof(levt));
+
+      if (readlen <= 0)
       {
-        CLog::Log(LOGINFO,"input device was unplugged %s",m_deviceName);
-        m_bUnplugged = true;
+        if (errno == ENODEV)
+        {
+          CLog::Log(LOGINFO,"input device was unplugged %s",m_deviceName);
+          m_bUnplugged = true;
+        }
+
+        break;
       }
 
-      break;
-    }
+      //printf("read event readlen = %d device name %s m_fileName %s\n", readlen, m_deviceName, m_fileName.c_str());
 
-    //printf("read event readlen = %d device name %s m_fileName %s\n", readlen, m_deviceName, m_fileName.c_str());
-
-    // sanity check if we realy read the event
-    if(readlen != sizeof(levt))
-    {
-      printf("CLinuxInputDevice: read error : %s\n", strerror(errno));
-      break;
-    }
-
-    if (!TranslateEvent(levt, devt))
-      continue;
-
-    /* Flush previous event with DIEF_FOLLOW? */
-    if (devt.type != XBMC_NOEVENT)
-    {
-      //printf("new event! type = %d\n", devt.type);
-      //printf("key: %d %d %d %c\n", devt.key.keysym.scancode, devt.key.keysym.sym, devt.key.keysym.mod, devt.key.keysym.unicode);
-
-      if (m_hasLeds && (m_keyMods != m_lastKeyMods))
+      // sanity check if we realy read the event
+      if(readlen != sizeof(levt))
       {
-        SetLed(LED_NUML, m_keyMods & XBMCKMOD_NUM);
-        SetLed(LED_CAPSL, m_keyMods & XBMCKMOD_CAPS);
-        m_lastKeyMods = m_keyMods;
+        CLog::Log(LOGERROR,"CLinuxInputDevice: read error : %s\n", strerror(errno));
+        break;
       }
 
-      break;
+      if (!TranslateEvent(levt, devt))
+        continue;
+
+      /* Flush previous event with DIEF_FOLLOW? */
+      if (devt.type != XBMC_NOEVENT)
+      {
+        //printf("new event! type = %d\n", devt.type);
+        //printf("key: %d %d %d %c\n", devt.key.keysym.scancode, devt.key.keysym.sym, devt.key.keysym.mod, devt.key.keysym.unicode);
+
+        if (m_hasLeds && (m_keyMods != m_lastKeyMods))
+        {
+          SetLed(LED_NUML, m_keyMods & XBMCKMOD_NUM);
+          SetLed(LED_CAPSL, m_keyMods & XBMCKMOD_CAPS);
+          m_lastKeyMods = m_keyMods;
+        }
+
+        break;
+      }
     }
+  }
+  else
+  {
+     devt = m_equeue.front();
+     m_equeue.pop_front();
   }
 
   return devt;
@@ -790,23 +898,6 @@ XBMC_Event CLinuxInputDevice::ReadEvent()
 void CLinuxInputDevice::SetupKeyboardAutoRepeat(int fd)
 {
   bool enable = true;
-
-#if defined(HAS_AMLPLAYER)
-  // ignore the native aml driver named 'key_input',
-  //  it is the dedicated power key handler (am_key_input)
-  if (strncmp(m_deviceName, "key_input", strlen("key_input")) == 0)
-    return;
-  // ignore the native aml driver named 'aml_keypad',
-  //  it is the dedicated IR remote handler (amremote)
-  else if (strncmp(m_deviceName, "aml_keypad", strlen("aml_keypad")) == 0)
-    return;
-
-  // turn off any keyboard autorepeat, there is a kernel bug
-  // where if the cpu is max'ed then key up is missed and
-  // we get a flood of EV_REP that never stop until next
-  // key down/up. Very nasty when seeking during video playback.
-  enable = false;
-#endif
 
   if (enable)
   {
@@ -913,6 +1004,10 @@ void CLinuxInputDevice::GetInfo(int fd)
     for (i = 0; i < ABS_PRESSURE; i++)
       if (test_bit( i, absbit ))
         num_abs++;
+
+    /* test if it is a multi-touch type B device */
+    if (test_bit(ABS_MT_SLOT, absbit))
+      m_deviceType |= LI_DEVICE_MULTITOUCH;
   }
 
   /* Mouse, Touchscreen or Smartpad ? */
@@ -958,6 +1053,11 @@ void CLinuxInputDevice::GetInfo(int fd)
   /* Decide which primary input device to be. */
   if (m_deviceType & LI_DEVICE_KEYBOARD)
     m_devicePreferredId = LI_DEVICE_KEYBOARD;
+  else if (m_deviceType & LI_DEVICE_MULTITOUCH)
+  {
+    m_devicePreferredId = LI_DEVICE_MULTITOUCH;
+    CGenericTouchInputHandler::GetInstance().RegisterHandler(&CGenericTouchActionHandler::GetInstance());
+  }
   else if (m_deviceType & LI_DEVICE_REMOTE)
     m_devicePreferredId = LI_DEVICE_REMOTE;
   else if (m_deviceType & LI_DEVICE_JOYSTICK)
@@ -972,9 +1072,9 @@ void CLinuxInputDevice::GetInfo(int fd)
   //printf("pref: %d\n", m_devicePreferredId);
 }
 
-char* CLinuxInputDevice::GetDeviceName()
+const std::string& CLinuxInputDevice::GetFileName()
 {
-  return m_deviceName;
+  return m_fileName;
 }
 
 bool CLinuxInputDevice::IsUnplugged()
@@ -982,14 +1082,117 @@ bool CLinuxInputDevice::IsUnplugged()
   return m_bUnplugged;
 }
 
+CLinuxInputDevicesCheckHotplugged::CLinuxInputDevicesCheckHotplugged(CLinuxInputDevices &parent) :
+    CThread("CLinuxInputDevicesCheckHotplugged"), m_parent(parent)
+{
+  Create();
+  SetPriority(THREAD_PRIORITY_BELOW_NORMAL);
+}
+
+CLinuxInputDevicesCheckHotplugged::~CLinuxInputDevicesCheckHotplugged()
+{
+  m_bStop = true;
+  m_quitEvent.Set();
+  StopThread(true);
+}
+
+void CLinuxInputDevicesCheckHotplugged::Process()
+{
+  while (!m_bStop)
+  {
+    m_parent.CheckHotplugged();
+    // every ten seconds
+    m_quitEvent.WaitMSec(10000);
+  }
+}
+
+/*
+ * this function is not powerful because it reinitializes a new udev search each
+ * time it would be nicer to call this only one time + one time at each hotplug
+ * but it is already very fast, so, let's keep it simple and non intrusive
+ */
+bool CLinuxInputDevices::IsUdevJoystick(const char *devpath)
+{
+#if defined(HAVE_LIBUDEV)
+  struct udev *udev;
+  struct udev_enumerate *enumerate;
+  struct udev_list_entry *devices, *dev_list_entry;
+  struct udev_device *dev;
+  const char *path;
+  const char *devfoundpath;
+
+  udev = udev_new();
+  if (!udev)
+    return false; // can't create udev
+
+  enumerate = udev_enumerate_new(udev);
+  if (enumerate == NULL)
+  {
+    udev_unref(udev);
+    return false;
+  }
+
+  if (udev_enumerate_add_match_subsystem(enumerate, "input") == 0)
+  {
+    if (udev_enumerate_add_match_property(enumerate, "ID_INPUT_JOYSTICK", "1") == 0)
+    {
+      if (udev_enumerate_scan_devices(enumerate) >= 0)
+      {
+        devices = udev_enumerate_get_list_entry(enumerate);
+
+        udev_list_entry_foreach(dev_list_entry, devices)
+        {
+          path = udev_list_entry_get_name(dev_list_entry);
+          dev = udev_device_new_from_syspath(udev, path);
+          if (dev != NULL)
+          {
+            devfoundpath = udev_device_get_devnode(dev);
+            if (devfoundpath != NULL)
+            {
+              // found (finally !)
+              //printf("=> %s\n", devfoundpath);
+              if (strcmp(devfoundpath, devpath) == 0)
+              {
+                udev_device_unref(dev);
+                udev_enumerate_unref(enumerate);
+                udev_unref(udev);
+                return true;
+              }
+            }
+            udev_device_unref(dev);
+          }
+        }
+      }
+    }
+  }
+
+  udev_enumerate_unref(enumerate);
+  udev_unref(udev);
+#endif
+
+  return false;
+}
+
 bool CLinuxInputDevices::CheckDevice(const char *device)
 {
   int fd;
+
+  // Does the device exists?
+  struct stat buffer;
+  if (stat(device, &buffer) != 0)
+    return false;
 
   /* Check if we are able to open the device */
   fd = open(device, O_RDWR);
   if (fd < 0)
     return false;
+
+  // let others handle joysticks
+  if (IsUdevJoystick(device))
+  {
+    close(fd);
+    return false;
+  }
 
   if (ioctl(fd, EVIOCGRAB, 1) && errno != EINVAL)
   {
@@ -1043,10 +1246,6 @@ void CLinuxInputDevices::InitAvailable()
  */
 void CLinuxInputDevices::CheckHotplugged()
 {
-  CSingleLock lock(m_devicesListLock);
-
-  int deviceId = m_devices.size();
-
   /* No devices specified. Try to guess some. */
   for (int i = 0; i < MAX_LINUX_INPUT_DEVICES; i++)
   {
@@ -1054,18 +1253,22 @@ void CLinuxInputDevices::CheckHotplugged()
     bool ispresent = false;
 
     snprintf(buf, 32, "/dev/input/event%d", i);
-
-    for (size_t j = 0; j < m_devices.size(); j++)
     {
-      if (strcmp(m_devices[j]->GetDeviceName(),buf) == 0)
+      CSingleLock lock(m_devicesListLock);
+      for (size_t j = 0; j < m_devices.size(); j++)
       {
-        ispresent = true;
-        break;
+        if (m_devices[j]->GetFileName().compare(buf) == 0)
+        {
+          ispresent = true;
+          break;
+        }
       }
     }
 
     if (!ispresent && CheckDevice(buf))
     {
+      CSingleLock lock(m_devicesListLock);
+      int deviceId = m_devices.size();
       CLog::Log(LOGINFO, "Found input device %s", buf);
       m_devices.push_back(new CLinuxInputDevice(buf, deviceId));
       ++deviceId;
@@ -1256,18 +1459,6 @@ XBMC_Event CLinuxInputDevices::ReadEvent()
     InitAvailable();
     m_bReInitialize = false;
   }
-  else
-  {
-    time_t now;
-    time(&now);
-
-    if ((now - m_lastHotplugCheck) >= 10)
-    {
-      CheckHotplugged();
-      m_lastHotplugCheck = now;
-    }
-  }
-
   CSingleLock lock(m_devicesListLock);
 
   XBMC_Event event;

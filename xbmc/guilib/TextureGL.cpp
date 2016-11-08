@@ -1,32 +1,35 @@
 /*
-*      Copyright (C) 2005-2013 Team XBMC
-*      http://www.xbmc.org
-*
-*  This Program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-*
-*  This Program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with XBMC; see the file COPYING.  If not, see
-*  <http://www.gnu.org/licenses/>.
-*
-*/
+ *      Copyright (C) 2005-2015 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "system.h"
-#include "TextureGL.h"
+#include "Texture.h"
 #include "windowing/WindowingFactory.h"
 #include "utils/log.h"
 #include "utils/GLUtils.h"
+#include "guilib/TextureManager.h"
+#include "settings/AdvancedSettings.h"
+#ifdef TARGET_POSIX
+#include "linux/XMemUtils.h"
+#endif
 
 #if defined(HAS_GL) || defined(HAS_GLES)
-
-using namespace std;
 
 /************************************************************************/
 /*    CGLTexture                                                       */
@@ -50,7 +53,7 @@ void CGLTexture::CreateTextureObject()
 void CGLTexture::DestroyTextureObject()
 {
   if (m_texture)
-    glDeleteTextures(1, (GLuint*) &m_texture);
+    g_TextureManager.ReleaseHwTexture(m_texture);
 }
 
 void CGLTexture::LoadToGPU()
@@ -71,7 +74,20 @@ void CGLTexture::LoadToGPU()
   glBindTexture(GL_TEXTURE_2D, m_texture);
 
   // Set the texture's stretching properties
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  if (IsMipmapped())
+  {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+#ifndef HAS_GLES
+    // Lower LOD bias equals more sharpness, but less smooth animation
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -0.5f);
+    glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+#endif
+  }
+  else
+  {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  }
+
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -174,10 +190,15 @@ void CGLTexture::LoadToGPU()
   glTexImage2D(GL_TEXTURE_2D, 0, internalformat, m_textureWidth, m_textureHeight, 0,
     pixelformat, GL_UNSIGNED_BYTE, m_pixels);
 
+  if (IsMipmapped())
+  {
+    glGenerateMipmap(GL_TEXTURE_2D);
+  }
+
 #endif
   VerifyGLState();
 
-  delete [] m_pixels;
+  _aligned_free(m_pixels);
   m_pixels = NULL;
 
   m_loadedToGPU = true;

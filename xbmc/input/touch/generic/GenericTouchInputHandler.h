@@ -1,7 +1,7 @@
 #pragma once
 /*
- *      Copyright (C) 2012 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2012-2013 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,7 +48,7 @@ public:
   /*!
    \brief Get an instance of the touch input manager
    */
-  static CGenericTouchInputHandler &Get();
+  static CGenericTouchInputHandler &GetInstance();
 
   // implementation of ITouchInputHandler
   virtual bool HandleTouchInput(TouchInput event, float x, float y, int64_t time, int32_t pointer = 0, float size = 0.0f);

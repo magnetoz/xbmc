@@ -22,33 +22,33 @@
 #include "GUIInfoManager.h"
 #include "utils/XMLUtils.h"
 
-CProfile::CLock::CLock(LockType type, const CStdString &password)
+CProfile::CLock::CLock(LockType type, const std::string &password):
+  code(password)
 {
   programs = false;
   pictures = false;
   files = false;
   video = false;
   music = false;
-  settings = false;
+  settings = LOCK_LEVEL::NONE;
   addonManager = false;
   mode = type;
-  code = password;
 }
 
 void CProfile::CLock::Validate()
 {
-  if (mode != LOCK_MODE_EVERYONE && (code == "-" || code.IsEmpty()))
+  if (mode != LOCK_MODE_EVERYONE && (code == "-" || code.empty()))
     mode = LOCK_MODE_EVERYONE;
   
-  if (code.IsEmpty() || mode == LOCK_MODE_EVERYONE)
+  if (code.empty() || mode == LOCK_MODE_EVERYONE)
     code = "-";
 }
 
-CProfile::CProfile(const CStdString &directory, const CStdString &name, const int id)
+CProfile::CProfile(const std::string &directory, const std::string &name, const int id):
+  m_directory(directory),
+  m_name(name)
 {
   m_id = id;
-  m_directory = directory;
-  m_name = name;
   m_bDatabases = true;
   m_bCanWrite = true;
   m_bSources = true;
@@ -61,9 +61,9 @@ CProfile::~CProfile(void)
 
 void CProfile::setDate()
 {
-  CStdString strDate = g_infoManager.GetDate(true);
-  CStdString strTime = g_infoManager.GetTime();
-  if (strDate.IsEmpty() || strTime.IsEmpty())
+  std::string strDate = g_infoManager.GetDate(true);
+  std::string strTime = g_infoManager.GetTime();
+  if (strDate.empty() || strTime.empty())
     setDate("-");
   else
     setDate(strDate+" - "+strTime);
@@ -82,7 +82,9 @@ void CProfile::Load(const TiXmlNode *node, int nextIdProfile)
   XMLUtils::GetBoolean(node, "hassources", m_bSources);
   XMLUtils::GetBoolean(node, "canwritesources", m_bCanWriteSources);
   XMLUtils::GetBoolean(node, "lockaddonmanager", m_locks.addonManager);
-  XMLUtils::GetBoolean(node, "locksettings", m_locks.settings);
+  int settings = m_locks.settings;
+  XMLUtils::GetInt(node, "locksettings", settings);
+  m_locks.settings = (LOCK_LEVEL::SETTINGS_LOCK)settings;
   XMLUtils::GetBoolean(node, "lockfiles", m_locks.files);
   XMLUtils::GetBoolean(node, "lockmusic", m_locks.music);
   XMLUtils::GetBoolean(node, "lockvideo", m_locks.video);
@@ -113,7 +115,7 @@ void CProfile::Save(TiXmlNode *root) const
   XMLUtils::SetBoolean(node, "hassources", m_bSources);
   XMLUtils::SetBoolean(node, "canwritesources", m_bCanWriteSources);
   XMLUtils::SetBoolean(node, "lockaddonmanager", m_locks.addonManager);
-  XMLUtils::SetBoolean(node, "locksettings", m_locks.settings);
+  XMLUtils::SetInt(node, "locksettings", m_locks.settings);
   XMLUtils::SetBoolean(node, "lockfiles", m_locks.files);
   XMLUtils::SetBoolean(node, "lockmusic", m_locks.music);
   XMLUtils::SetBoolean(node, "lockvideo", m_locks.video);

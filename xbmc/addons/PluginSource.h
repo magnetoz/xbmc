@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,9 +30,12 @@ public:
 
   enum Content { UNKNOWN, AUDIO, IMAGE, EXECUTABLE, VIDEO };
 
-  CPluginSource(const cp_extension_t *ext);
-  CPluginSource(const AddonProps &props);
-  virtual ~CPluginSource() {}
+  static std::unique_ptr<CPluginSource> FromExtension(AddonProps props, const cp_extension_t* ext);
+
+  explicit CPluginSource(AddonProps props);
+  CPluginSource(AddonProps props, const std::string& provides);
+
+  virtual TYPE FullType() const;
   virtual bool IsType(TYPE type) const;
   bool Provides(const Content& content) const
   {
@@ -44,13 +47,13 @@ public:
     return m_providedContent.size() > 1;
   }
 
-  static Content Translate(const CStdString &content);
+  static Content Translate(const std::string &content);
 private:
   /*! \brief Set the provided content for this plugin
    If no valid content types are passed in, we set the EXECUTABLE type
    \param content a space-separated list of content types
    */
-  void SetProvides(const CStdString &content);
+  void SetProvides(const std::string &content);
   std::set<Content> m_providedContent;
 };
 

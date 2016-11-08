@@ -1,6 +1,8 @@
+#pragma once
+
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,47 +15,40 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
-
-#ifndef _EMU_MSVCRT_H_
-#define _EMU_MSVCRT_H_
-
-#ifdef _LINUX
+#ifdef TARGET_POSIX
 #define _onexit_t void*
 #endif
 
-#if defined(TARGET_DARWIN) || defined(TARGET_FREEBSD)
+#if defined(TARGET_DARWIN) || defined(TARGET_FREEBSD) || defined(TARGET_ANDROID)
 typedef off_t __off_t;
 typedef int64_t off64_t;
 typedef off64_t __off64_t;
 typedef fpos_t fpos64_t;
 #endif
-#if defined(__ANDROID__)
-typedef long int __off_t;
-typedef long int __off64_t;
-typedef fpos_t   fpos64_t; // no 64-bit on android
-#endif
 
-#ifdef WIN32
-#include "win32/dirent.h"
+#ifdef TARGET_WINDOWS
+#include "platform/win32/dirent.h"
 #else
 #include <dirent.h>
 #endif
 
 typedef void ( *PFV)(void);
 
-#define __IS_STDIN_STREAM(stream)   (stream == stdin  || stream->_file == stdin->_file || stream->_file == 0)
-#define __IS_STDOUT_STREAM(stream)  (stream == stdout || stream->_file == stdout->_file || stream->_file == 1)
-#define __IS_STDERR_STREAM(stream)  (stream == stderr || stream->_file == stderr->_file || stream->_file == 2)
+#define __IS_STDIN_STREAM(stream)  (stream == stdin || fileno(stream) == fileno(stdin) || fileno(stream) == 0)
+#define __IS_STDOUT_STREAM(stream) (stream == stdout || fileno(stream) == fileno(stdout) || fileno(stream) == 1)
+#define __IS_STDERR_STREAM(stream) (stream == stderr || fileno(stream) == fileno(stderr) || fileno(stream) == 2)
 #define IS_STDIN_STREAM(stream)     (stream != NULL && __IS_STDIN_STREAM(stream))
 #define IS_STDOUT_STREAM(stream)    (stream != NULL && __IS_STDOUT_STREAM(stream))
 #define IS_STDERR_STREAM(stream)    (stream != NULL && __IS_STDERR_STREAM(stream))
-#ifdef _WIN32
+#if defined(TARGET_WINDOWS) && (_MSC_VER < 1900)
 #define IS_VALID_STREAM(stream)     (stream != NULL && (stream->_ptr != NULL))
+#elif defined(TARGET_WINDOWS) && (_MSC_VER >= 1900)
+#define IS_VALID_STREAM(stream)     (stream != nullptr && (stream->_Placeholder != nullptr))
 #else
 #define IS_VALID_STREAM(stream)     true
 #endif
@@ -99,7 +94,7 @@ extern "C"
   __off_t dll_lseek(int fd, __off_t lPos, int iWhence);
   char* dll_getenv(const char* szKey);
   int dll_fclose (FILE * stream);
-#ifndef _LINUX
+#ifndef TARGET_POSIX
   intptr_t dll_findfirst(const char *file, struct _finddata_t *data);
   int dll_findnext(intptr_t f, _finddata_t* data);
   int dll_findclose(intptr_t handle);
@@ -116,7 +111,8 @@ extern "C"
   int dll_feof (FILE * stream);
   int dll_fread (void * buffer, size_t size, size_t count, FILE * stream);
   int dll_getc (FILE * stream);
-  FILE * dll_fopen (const char * filename, const char * mode);
+  FILE * dll_fopen(const char * filename, const char * mode);
+  int dll_fopen_s(FILE** pFile, const char * filename, const char * mode);
   int dll_fputc (int character, FILE * stream);
   int dll_putcchar (int character);
   int dll_fputs (const char * szLine , FILE* stream);
@@ -143,14 +139,14 @@ extern "C"
   uintptr_t dll_beginthread(void( *start_address )( void * ),unsigned stack_size,void *arglist);
   HANDLE dll_beginthreadex(LPSECURITY_ATTRIBUTES lpThreadAttributes, DWORD dwStackSize,
                            LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags,
-#ifdef __FreeBSD__
+#ifdef TARGET_FREEBSD
                            LPLONG lpThreadId);
 #else
                            LPDWORD lpThreadId);
 #endif
   int dll_stati64(const char *path, struct _stati64 *buffer);
   int dll_stat64(const char *path, struct __stat64 *buffer);
-#ifdef _WIN32
+#ifdef TARGET_WINDOWS
   int dll_stat64i32(const char *path, struct _stat64i32 *buffer);
 #endif
   int dll_stat(const char *path, struct stat *buffer);
@@ -174,24 +170,23 @@ extern "C"
   int dll_ftrylockfile(FILE *file);
   void dll_funlockfile(FILE *file);
   int dll_fstat64(int fd, struct __stat64 *buf);
-#ifdef _WIN32
+#ifdef TARGET_WINDOWS
   int dll_fstat64i32(int fd, struct _stat64i32 *buffer);
   int dll_open_osfhandle(intptr_t _OSFileHandle, int _Flags);
 #endif
   int dll_setvbuf(FILE *stream, char *buf, int type, size_t size);
+
+#if _MSC_VER < 1900
   int dll_filbuf(FILE *fp);
   int dll_flsbuf(int data, FILE*fp);
+#endif
 
-#if defined(__ANDROID__)
+#if defined(TARGET_ANDROID)
   volatile int * __cdecl dll_errno(void);
-#elif defined(_LINUX)
+#elif defined(TARGET_POSIX)
   int * __cdecl dll_errno(void);
 #endif
 
   extern char **dll__environ;
 }
-
-
-
-#endif // _EMU_MSVCRT_H_
 

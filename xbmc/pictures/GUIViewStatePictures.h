@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,10 +27,11 @@ class CGUIViewStateWindowPictures : public CGUIViewState
 public:
   CGUIViewStateWindowPictures(const CFileItemList& items);
 
+  virtual std::string GetLockType();
+  virtual std::string GetExtensions();
+  virtual VECSOURCES& GetSources();
+
 protected:
   virtual void SaveViewState();
-  virtual CStdString GetLockType();
-  virtual CStdString GetExtensions();
-  virtual VECSOURCES& GetSources();
 };
 

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,85 +24,8 @@
 #if !defined(AFX_VIDEOSETTINGS_H__562A722A_CD2A_4B4A_8A67_32DE8088A7D3__INCLUDED_)
 #define AFX_VIDEOSETTINGS_H__562A722A_CD2A_4B4A_8A67_32DE8088A7D3__INCLUDED_
 
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
-
-enum EDEINTERLACEMODE
-{
-  VS_DEINTERLACEMODE_OFF=0,
-  VS_DEINTERLACEMODE_AUTO=1,
-  VS_DEINTERLACEMODE_FORCE=2
-};
-
-enum EINTERLACEMETHOD
-{
-  VS_INTERLACEMETHOD_NONE=0, // Legacy
-  VS_INTERLACEMETHOD_AUTO=1,
-  VS_INTERLACEMETHOD_RENDER_BLEND=2,
-
-  VS_INTERLACEMETHOD_RENDER_WEAVE_INVERTED=3,
-  VS_INTERLACEMETHOD_RENDER_WEAVE=4,
-  
-  VS_INTERLACEMETHOD_RENDER_BOB_INVERTED=5,
-  VS_INTERLACEMETHOD_RENDER_BOB=6,
-
-  VS_INTERLACEMETHOD_DEINTERLACE=7,
-
-  VS_INTERLACEMETHOD_VDPAU_BOB=8,
-  VS_INTERLACEMETHOD_INVERSE_TELECINE=9,
-
-  VS_INTERLACEMETHOD_VDPAU_INVERSE_TELECINE=11,
-  VS_INTERLACEMETHOD_VDPAU_TEMPORAL=12,
-  VS_INTERLACEMETHOD_VDPAU_TEMPORAL_HALF=13,
-  VS_INTERLACEMETHOD_VDPAU_TEMPORAL_SPATIAL=14,
-  VS_INTERLACEMETHOD_VDPAU_TEMPORAL_SPATIAL_HALF=15,
-  VS_INTERLACEMETHOD_DEINTERLACE_HALF=16,
-  VS_INTERLACEMETHOD_DXVA_BOB = 17,
-  VS_INTERLACEMETHOD_DXVA_BEST = 18,
-  // VS_INTERLACEMETHOD_DXVA_ANY = 19, Legacy
-
-  VS_INTERLACEMETHOD_SW_BLEND = 20,
-  VS_INTERLACEMETHOD_AUTO_ION = 21,
-
-  VS_INTERLACEMETHOD_MAX // do not use and keep as last enum value.
-};
-
-enum ESCALINGMETHOD
-{
-  VS_SCALINGMETHOD_NEAREST=0,
-  VS_SCALINGMETHOD_LINEAR,
-
-  VS_SCALINGMETHOD_CUBIC,
-  VS_SCALINGMETHOD_LANCZOS2,
-  VS_SCALINGMETHOD_LANCZOS3_FAST,
-  VS_SCALINGMETHOD_LANCZOS3,
-  VS_SCALINGMETHOD_SINC8,
-  VS_SCALINGMETHOD_NEDI,
-  
-  VS_SCALINGMETHOD_BICUBIC_SOFTWARE,
-  VS_SCALINGMETHOD_LANCZOS_SOFTWARE,
-  VS_SCALINGMETHOD_SINC_SOFTWARE,
-  VS_SCALINGMETHOD_VDPAU_HARDWARE,
-  VS_SCALINGMETHOD_DXVA_HARDWARE,
-
-  VS_SCALINGMETHOD_AUTO,
-
-  VS_SCALINGMETHOD_SPLINE36_FAST,
-  VS_SCALINGMETHOD_SPLINE36,
-
-  VS_SCALINGMETHOD_MAX // do not use and keep as last enum value.
-};
-
-typedef enum {
-  ViewModeNormal      = 0,
-  ViewModeZoom,
-  ViewModeStretch4x3,
-  ViewModeWideZoom,
-  ViewModeStretch16x9,
-  ViewModeOriginal,
-  ViewModeCustom
-} ViewMode;
+#include "cores/IPlayer.h"
 
 class CVideoSettings
 {
@@ -112,7 +35,6 @@ public:
 
   bool operator!=(const CVideoSettings &right) const;
 
-  EDEINTERLACEMODE m_DeinterlaceMode;
   EINTERLACEMETHOD m_InterlaceMethod;
   ESCALINGMETHOD   m_ScalingMethod;
   int m_ViewMode;   // current view mode
@@ -135,11 +57,9 @@ public:
   float m_Sharpness;
   float m_AudioDelay;
   int m_ResumeTime;
-  bool m_Crop;
-  int m_CropTop;
-  int m_CropBottom;
-  int m_CropLeft;
-  int m_CropRight;
+  int m_StereoMode;
+  bool m_StereoInvert;
+  int m_VideoStream;
 
 private:
 };

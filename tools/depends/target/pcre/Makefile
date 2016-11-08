@@ -1,14 +1,18 @@
 include ../../Makefile.include
-DEPS= ../../Makefile.include Makefile
+DEPS= ../../Makefile.include Makefile tvos-bitcode-fix.patch
 
 # lib name, version
 LIBNAME=pcre
-VERSION=7.9
+VERSION=8.36
 SOURCE=$(LIBNAME)-$(VERSION)
 ARCHIVE=$(SOURCE).tar.gz
 
 # configuration settings
-CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; ./configure --prefix=$(PREFIX) --disable-stack-for-recursion --disable-shared
+CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; ./configure --prefix=$(PREFIX) \
+	--disable-shared --disable-stack-for-recursion \
+	--enable-pcre8 --disable-pcre16 --disable-pcre32 \
+	--enable-jit --enable-utf --enable-unicode-properties \
+	--enable-newline-is-anycrlf
 
 
 LIBDYLIB=$(PLATFORM)/.libs/lib$(LIBNAME).a
@@ -22,6 +26,8 @@ $(TARBALLS_LOCATION)/$(ARCHIVE):
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
+	cd $(PLATFORM); patch -p1 < ../tvos-bitcode-fix.patch
+	cd $(PLATFORM); patch -p0 < ../jit_aarch64.patch
 	cd $(PLATFORM); $(CONFIGURE)
 
 $(LIBDYLIB): $(PLATFORM)

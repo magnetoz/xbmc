@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,11 +30,11 @@
 TEST(TestFileOperationJob, ActionCopy)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath, destfile;
+  std::string tmpfilepath, destfile;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
   tmpfile->Close();
 
@@ -44,7 +44,7 @@ TEST(TestFileOperationJob, ActionCopy)
   item->Select(true);
   items.Add(item);
 
-  URIUtils::GetDirectory(tmpfilepath, destpath);
+  std::string destpath = URIUtils::GetDirectory(tmpfilepath);
   destpath = URIUtils::AddFileToFolder(destpath, "copy");
   destfile = URIUtils::AddFileToFolder(destpath, URIUtils::GetFileName(tmpfilepath));
   ASSERT_FALSE(XFILE::CFile::Exists(destfile));
@@ -64,11 +64,11 @@ TEST(TestFileOperationJob, ActionCopy)
 TEST(TestFileOperationJob, ActionMove)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath, destfile;
+  std::string tmpfilepath, destfile;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
   tmpfile->Close();
 
@@ -78,7 +78,7 @@ TEST(TestFileOperationJob, ActionMove)
   item->Select(true);
   items.Add(item);
 
-  URIUtils::GetDirectory(tmpfilepath, destpath);
+  std::string destpath = URIUtils::GetDirectory(tmpfilepath);
   destpath = URIUtils::AddFileToFolder(destpath, "move");
   destfile = URIUtils::AddFileToFolder(destpath, URIUtils::GetFileName(tmpfilepath));
   ASSERT_FALSE(XFILE::CFile::Exists(destfile));
@@ -98,11 +98,11 @@ TEST(TestFileOperationJob, ActionMove)
 TEST(TestFileOperationJob, ActionDelete)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath, destfile;
+  std::string tmpfilepath, destfile;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
   tmpfile->Close();
 
@@ -112,7 +112,7 @@ TEST(TestFileOperationJob, ActionDelete)
   item->Select(true);
   items.Add(item);
 
-  URIUtils::GetDirectory(tmpfilepath, destpath);
+  std::string destpath = URIUtils::GetDirectory(tmpfilepath);
   destpath = URIUtils::AddFileToFolder(destpath, "delete");
   destfile = URIUtils::AddFileToFolder(destpath, URIUtils::GetFileName(tmpfilepath));
   ASSERT_FALSE(XFILE::CFile::Exists(destfile));
@@ -148,11 +148,11 @@ TEST(TestFileOperationJob, ActionDelete)
 TEST(TestFileOperationJob, ActionReplace)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath, destfile;
+  std::string tmpfilepath, destfile;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
   tmpfile->Close();
 
@@ -162,7 +162,7 @@ TEST(TestFileOperationJob, ActionReplace)
   item->Select(true);
   items.Add(item);
 
-  URIUtils::GetDirectory(tmpfilepath, destpath);
+  std::string destpath = URIUtils::GetDirectory(tmpfilepath);
   destpath = URIUtils::AddFileToFolder(destpath, "replace");
   destfile = URIUtils::AddFileToFolder(destpath, URIUtils::GetFileName(tmpfilepath));
   ASSERT_FALSE(XFILE::CFile::Exists(destfile));
@@ -185,16 +185,19 @@ TEST(TestFileOperationJob, ActionReplace)
   EXPECT_TRUE(XFILE::CDirectory::Remove(destpath));
 }
 
-// This test will fail until ActionCreateFolder has a proper implementation
 TEST(TestFileOperationJob, ActionCreateFolder)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath;
+  std::string tmpfilepath, destpath;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
+
+  std::string tmpfiledirectory =
+    CXBMCTestUtils::Instance().TempFileDirectory(tmpfile);
+
   tmpfile->Close();
 
   destpath = tmpfilepath;
@@ -207,7 +210,7 @@ TEST(TestFileOperationJob, ActionCreateFolder)
   item->Select(true);
   items.Add(item);
 
-  job.SetFileOperation(CFileOperationJob::ActionCreateFolder, items, destpath);
+  job.SetFileOperation(CFileOperationJob::ActionCreateFolder, items, tmpfiledirectory);
   EXPECT_EQ(CFileOperationJob::ActionCreateFolder, job.GetAction());
 
   EXPECT_TRUE(job.DoWork());
@@ -221,12 +224,16 @@ TEST(TestFileOperationJob, ActionCreateFolder)
 TEST(TestFileOperationJob, ActionDeleteFolder)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath;
+  std::string tmpfilepath, destpath;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
+
+  std::string tmpfiledirectory =
+    CXBMCTestUtils::Instance().TempFileDirectory(tmpfile);
+
   tmpfile->Close();
 
   destpath = tmpfilepath;
@@ -239,13 +246,13 @@ TEST(TestFileOperationJob, ActionDeleteFolder)
   item->Select(true);
   items.Add(item);
 
-  job.SetFileOperation(CFileOperationJob::ActionCreateFolder, items, destpath);
+  job.SetFileOperation(CFileOperationJob::ActionCreateFolder, items, tmpfiledirectory);
   EXPECT_EQ(CFileOperationJob::ActionCreateFolder, job.GetAction());
 
   EXPECT_TRUE(job.DoWork());
   EXPECT_TRUE(XFILE::CDirectory::Exists(destpath));
 
-  job.SetFileOperation(CFileOperationJob::ActionDeleteFolder, items, destpath);
+  job.SetFileOperation(CFileOperationJob::ActionDeleteFolder, items, tmpfiledirectory);
   EXPECT_EQ(CFileOperationJob::ActionDeleteFolder, job.GetAction());
 
   EXPECT_TRUE(job.DoWork());
@@ -257,11 +264,11 @@ TEST(TestFileOperationJob, ActionDeleteFolder)
 TEST(TestFileOperationJob, GetFunctions)
 {
   XFILE::CFile *tmpfile;
-  CStdString tmpfilepath, destpath, destfile;
+  std::string tmpfilepath, destfile;
   CFileItemList items;
   CFileOperationJob job;
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
   tmpfile->Close();
 
@@ -271,7 +278,7 @@ TEST(TestFileOperationJob, GetFunctions)
   item->Select(true);
   items.Add(item);
 
-  URIUtils::GetDirectory(tmpfilepath, destpath);
+  std::string destpath = URIUtils::GetDirectory(tmpfilepath);
   destpath = URIUtils::AddFileToFolder(destpath, "getfunctions");
   destfile = URIUtils::AddFileToFolder(destpath, URIUtils::GetFileName(tmpfilepath));
   ASSERT_FALSE(XFILE::CFile::Exists(destfile));

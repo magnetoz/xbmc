@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,17 +20,11 @@
  */
 
 #include "system.h"
+
 #ifdef HAS_WEB_SERVER
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
+#include <memory>
 #include <vector>
 
-#include "interfaces/json-rpc/ITransportLayer.h"
 #include "network/httprequesthandler/IHTTPRequestHandler.h"
 #include "threads/CriticalSection.h"
 
@@ -39,37 +33,68 @@ namespace XFILE
   class CFile;
 }
 class CDateTime;
+class CVariant;
 
-typedef std::pair<int64_t, int64_t> HttpRange;
-typedef std::vector<HttpRange> HttpRanges;
-
-class CWebServer : public JSONRPC::ITransportLayer
+class CWebServer
 {
 public:
   CWebServer();
   virtual ~CWebServer() { }
 
-  bool Start(int port, const std::string &username, const std::string &password);
+  bool Start(uint16_t port, const std::string &username, const std::string &password);
   bool Stop();
   bool IsStarted();
   void SetCredentials(const std::string &username, const std::string &password);
 
-  virtual bool PrepareDownload(const char *path, CVariant &details, std::string &protocol);
-  virtual bool Download(const char *path, CVariant &result);
-  virtual int GetCapabilities();
+  void RegisterRequestHandler(IHTTPRequestHandler *handler);
+  void UnregisterRequestHandler(IHTTPRequestHandler *handler);
 
-  static void RegisterRequestHandler(IHTTPRequestHandler *handler);
-  static void UnregisterRequestHandler(IHTTPRequestHandler *handler);
+protected:
+  typedef struct ConnectionHandler
+  {
+    std::string fullUri;
+    bool isNew;
+    std::shared_ptr<IHTTPRequestHandler> requestHandler;
+    struct MHD_PostProcessor *postprocessor;
+    int errorStatus;
 
-  static std::string GetRequestHeaderValue(struct MHD_Connection *connection, enum MHD_ValueKind kind, const std::string &key);
-  static int GetRequestHeaderValues(struct MHD_Connection *connection, enum MHD_ValueKind kind, std::map<std::string, std::string> &headerValues);
-  static int GetRequestHeaderValues(struct MHD_Connection *connection, enum MHD_ValueKind kind, std::multimap<std::string, std::string> &headerValues);
+    ConnectionHandler(const std::string& uri)
+      : fullUri(uri)
+      , isNew(true)
+      , requestHandler(nullptr)
+      , postprocessor(nullptr)
+      , errorStatus(MHD_HTTP_OK)
+    { }
+  } ConnectionHandler;
+
+  virtual void LogRequest(const char* uri) const;
+
+  virtual int HandlePartialRequest(struct MHD_Connection *connection, ConnectionHandler* connectionHandler, HTTPRequest request,
+                                   const char *upload_data, size_t *upload_data_size, void **con_cls);
+  virtual int HandleRequest(const std::shared_ptr<IHTTPRequestHandler>& handler);
+  virtual int FinalizeRequest(const std::shared_ptr<IHTTPRequestHandler>& handler, int responseStatus, struct MHD_Response *response);
 
 private:
   struct MHD_Daemon* StartMHD(unsigned int flags, int port);
-  static int AskForAuthentication (struct MHD_Connection *connection);
-  static bool IsAuthenticated (CWebServer *server, struct MHD_Connection *connection);
 
+  int AskForAuthentication(struct MHD_Connection *connection) const;
+  bool IsAuthenticated(struct MHD_Connection *connection) const;
+
+  int CreateMemoryDownloadResponse(const std::shared_ptr<IHTTPRequestHandler>& handler, struct MHD_Response *&response) const;
+  int CreateRangedMemoryDownloadResponse(const std::shared_ptr<IHTTPRequestHandler>& handler, struct MHD_Response *&response) const;
+
+  int CreateRedirect(struct MHD_Connection *connection, const std::string &strURL, struct MHD_Response *&response) const;
+  int CreateFileDownloadResponse(const std::shared_ptr<IHTTPRequestHandler>& handler, struct MHD_Response *&response) const;
+  int CreateErrorResponse(struct MHD_Connection *connection, int responseType, HTTPMethod method, struct MHD_Response *&response) const;
+  int CreateMemoryDownloadResponse(struct MHD_Connection *connection, const void *data, size_t size, bool free, bool copy, struct MHD_Response *&response) const;
+
+  int SendErrorResponse(struct MHD_Connection *connection, int errorType, HTTPMethod method) const;
+
+  int AddHeader(struct MHD_Response *response, const std::string &name, const std::string &value) const;
+
+  static std::string CreateMimeTypeFromExtension(const char *ext);
+
+  // MHD callback implementations
   static void* UriRequestLogger(void *cls, const char *uri);
 
 #if (MHD_VERSION >= 0x00090200)
@@ -79,6 +104,7 @@ private:
 #else
   static int ContentReaderCallback (void *cls, size_t pos, char *buf, int max);
 #endif
+  static void ContentReaderFreeCallback(void *cls);
 
 #if (MHD_VERSION >= 0x00040001)
   static int AnswerToConnection (void *cls, struct MHD_Connection *connection,
@@ -99,36 +125,15 @@ private:
                              const char *transfer_encoding, const char *data, uint64_t off,
                              unsigned int size);
 #endif
-  static int HandleRequest(IHTTPRequestHandler *handler, const HTTPRequest &request);
-  static void ContentReaderFreeCallback (void *cls);
-  static int CreateRedirect(struct MHD_Connection *connection, const std::string &strURL, struct MHD_Response *&response);
-  static int CreateFileDownloadResponse(struct MHD_Connection *connection, const std::string &strURL, HTTPMethod methodType, struct MHD_Response *&response, int &responseCode);
-  static int CreateErrorResponse(struct MHD_Connection *connection, int responseType, HTTPMethod method, struct MHD_Response *&response);
-  static int CreateMemoryDownloadResponse(struct MHD_Connection *connection, void *data, size_t size, bool free, bool copy, struct MHD_Response *&response);
 
-  static int SendErrorResponse(struct MHD_Connection *connection, int errorType, HTTPMethod method);
-  
-  static HTTPMethod GetMethod(const char *method);
-  static int FillArgumentMap(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
-  static int FillArgumentMultiMap(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
-
-  static std::string CreateMimeTypeFromExtension(const char *ext);
-
-  static int AddHeader(struct MHD_Response *response, const std::string &name, const std::string &value);
-  static int64_t ParseRangeHeader(const std::string &rangeHeaderValue, int64_t totalLength, HttpRanges &ranges, int64_t &firstPosition, int64_t &lastPosition);
-  static std::string GenerateMultipartBoundary();
-  static bool GetLastModifiedDateTime(XFILE::CFile *file, CDateTime &lastModified);
-
-  struct MHD_Daemon *m_daemon;
-  bool m_running, m_needcredentials;
+  uint16_t m_port;
+  struct MHD_Daemon *m_daemon_ip6;
+  struct MHD_Daemon *m_daemon_ip4;
+  bool m_running;
+  bool m_needcredentials;
+  size_t m_thread_stacksize;
   std::string m_Credentials64Encoded;
   CCriticalSection m_critSection;
-  static std::vector<IHTTPRequestHandler *> m_requestHandlers;
-
-  typedef struct ConnectionHandler
-  {
-    IHTTPRequestHandler *requestHandler;
-    struct MHD_PostProcessor *postprocessor;
-  } ConnectionHandler;
+  std::vector<IHTTPRequestHandler *> m_requestHandlers;
 };
 #endif

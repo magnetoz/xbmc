@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ CGenericTouchRotateDetector::CGenericTouchRotateDetector(ITouchActionHandler *ha
 
 bool CGenericTouchRotateDetector::OnTouchDown(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   if (m_done)
@@ -46,7 +46,7 @@ bool CGenericTouchRotateDetector::OnTouchDown(unsigned int index, const Pointer 
 
 bool CGenericTouchRotateDetector::OnTouchUp(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   if (m_done)
@@ -70,7 +70,7 @@ bool CGenericTouchRotateDetector::OnTouchUp(unsigned int index, const Pointer &p
 
 bool CGenericTouchRotateDetector::OnTouchMove(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
 
   if (m_done)
@@ -117,7 +117,7 @@ bool CGenericTouchRotateDetector::OnTouchMove(unsigned int index, const Pointer 
 
 bool CGenericTouchRotateDetector::OnTouchUpdate(unsigned int index, const Pointer &pointer)
 {
-  if (index < 0 || index >= TOUCH_MAX_POINTERS)
+  if (index >= TOUCH_MAX_POINTERS)
     return false;
   
   if (m_done)

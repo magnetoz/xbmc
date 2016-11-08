@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 using namespace XFILE::MUSICDATABASEDIRECTORY;
 
-CDirectoryNodeArtist::CDirectoryNodeArtist(const CStdString& strName, CDirectoryNode* pParent)
+CDirectoryNodeArtist::CDirectoryNodeArtist(const std::string& strName, CDirectoryNode* pParent)
   : CDirectoryNode(NODE_TYPE_ARTIST, strName, pParent)
 {
 
@@ -36,7 +36,7 @@ NODE_TYPE CDirectoryNodeArtist::GetChildType() const
   return NODE_TYPE_ALBUM;
 }
 
-CStdString CDirectoryNodeArtist::GetLocalizedName() const
+std::string CDirectoryNodeArtist::GetLocalizedName() const
 {
   if (GetID() == -1)
     return g_localizeStrings.Get(15103); // All Artists
@@ -55,7 +55,7 @@ bool CDirectoryNodeArtist::GetContent(CFileItemList& items) const
   CQueryParams params;
   CollectQueryParams(params);
 
-  bool bSuccess = musicdatabase.GetArtistsNav(BuildPath(), items, !CSettings::Get().GetBool("musiclibrary.showcompilationartists"), params.GetGenreId());
+  bool bSuccess = musicdatabase.GetArtistsNav(BuildPath(), items, !CSettings::GetInstance().GetBool(CSettings::SETTING_MUSICLIBRARY_SHOWCOMPILATIONARTISTS), params.GetGenreId());
 
   musicdatabase.Close();
 

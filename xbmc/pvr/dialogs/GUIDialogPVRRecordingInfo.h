@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,13 +28,19 @@ namespace PVR
   public:
     CGUIDialogPVRRecordingInfo(void);
     virtual ~CGUIDialogPVRRecordingInfo(void) {}
-    virtual bool OnMessage(CGUIMessage& message);
-    virtual bool HasListItems() const { return true; };
-    virtual CFileItemPtr GetCurrentListItem(int offset = 0);
+    virtual bool OnMessage(CGUIMessage& message) override;
+    virtual bool OnInfo(int actionID) override;
+    virtual bool HasListItems() const override { return true; };
+    virtual CFileItemPtr GetCurrentListItem(int offset = 0) override;
 
     void SetRecording(const CFileItem *item);
 
+    static void ShowFor(const CFileItemPtr& item);
+
   protected:
+    bool OnClickButtonOK(CGUIMessage &message);
+    bool OnClickButtonPlay(CGUIMessage &message);
+
     CFileItemPtr m_recordItem;
   };
 }

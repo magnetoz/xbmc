@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
  *
  */
 
+#include "dialogs/GUIDialogSelect.h"
 #include "guilib/GUIDialog.h"
 
 namespace ADDON
@@ -28,20 +29,18 @@ namespace ADDON
 }
 class CFileItemList;
 
-class CGUIDialogVisualisationPresetList :
-      public CGUIDialog
+class CGUIDialogVisualisationPresetList : public CGUIDialogSelect
 {
 public:
-  CGUIDialogVisualisationPresetList(void);
-  virtual ~CGUIDialogVisualisationPresetList(void);
-  virtual bool OnMessage(CGUIMessage &message);
-  virtual void FrameMove();
+  CGUIDialogVisualisationPresetList();
+  bool OnMessage(CGUIMessage &message) override;
 
 protected:
-  virtual void OnInitWindow();
+  void OnInitWindow() override;
+  void OnDeinitWindow(int nextWindowID) override;
+  void OnSelect(int idx) override;
+
+private:
   void SetVisualisation(ADDON::CVisualisation *addon);
-  void Update();
-  ADDON::CVisualisation* m_viz; //TODO get rid
-  CFileItemList* m_vecPresets;
-  unsigned m_currentPreset;
+  ADDON::CVisualisation* m_viz;
 };

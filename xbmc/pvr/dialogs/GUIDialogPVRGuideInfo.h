@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,10 +20,12 @@
  */
 
 #include "guilib/GUIDialog.h"
+#include <memory>
 
 namespace EPG
 {
   class CEpgInfoTag;
+  typedef std::shared_ptr<EPG::CEpgInfoTag> CEpgInfoTagPtr;
 }
 
 namespace PVR
@@ -35,21 +37,26 @@ namespace PVR
   public:
     CGUIDialogPVRGuideInfo(void);
     virtual ~CGUIDialogPVRGuideInfo(void);
-    virtual bool OnMessage(CGUIMessage& message);
-    virtual bool HasListItems() const { return true; };
-    virtual CFileItemPtr GetCurrentListItem(int offset = 0);
+    virtual bool OnMessage(CGUIMessage& message) override;
+    virtual bool OnInfo(int actionID) override;
+    virtual bool HasListItems() const override { return true; };
+    virtual CFileItemPtr GetCurrentListItem(int offset = 0) override;
 
-    void SetProgInfo(const CFileItem *item);
+    void SetProgInfo(const EPG::CEpgInfoTagPtr &tag);
 
   protected:
-    void Update();
-    bool ActionStartTimer(const EPG::CEpgInfoTag *tag);
-    bool ActionCancelTimer(CFileItemPtr timer);
+    virtual void OnInitWindow() override;
+
+    bool ActionStartTimer(const EPG::CEpgInfoTagPtr &tag);
+    bool ActionCancelTimer(const CFileItemPtr &timer);
+    bool ActionAddTimerRule(const EPG::CEpgInfoTagPtr &tag);
 
     bool OnClickButtonOK(CGUIMessage &message);
     bool OnClickButtonRecord(CGUIMessage &message);
-    bool OnClickButtonSwitch(CGUIMessage &message);
+    bool OnClickButtonPlay(CGUIMessage &message);
+    bool OnClickButtonFind(CGUIMessage &message);
+    bool OnClickButtonAddTimer(CGUIMessage &message);
 
-    CFileItemPtr m_progItem;
+    EPG::CEpgInfoTagPtr m_progItem;
   };
 }

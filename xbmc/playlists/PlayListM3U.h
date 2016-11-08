@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+#include "URL.h"
 #include "PlayList.h"
 
 namespace PLAYLIST
@@ -26,15 +27,22 @@ class CPlayListM3U :
       public CPlayList
 {
 public:
+  static const char *StartMarker;
+  static const char *InfoMarker;
+  static const char *ArtistMarker;
+  static const char *AlbumMarker;
+  static const char *PropertyMarker;
+  static const char *VLCOptMarker;
+  static const char *StreamMarker;
+  static const char *BandwidthMarker;
+  static const char *OffsetMarker;
+
+public:
   CPlayListM3U(void);
   virtual ~CPlayListM3U(void);
-  virtual bool Load(const CStdString& strFileName);
-  virtual void Save(const CStdString& strFileName) const;
+  virtual bool Load(const std::string& strFileName);
+  virtual void Save(const std::string& strFileName) const;
 
-  static CStdString GetBestBandwidthStream(const CStdString &strFileName, size_t bandwidth);
-
-protected:
-
-  static std::map< CStdString, CStdString > ParseStreamLine(const CStdString &streamLine);
+  static std::map<std::string,std::string> ParseStreamLine(const std::string &streamLine);
 };
 }

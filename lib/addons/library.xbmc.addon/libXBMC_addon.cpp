@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -23,8 +22,10 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string>
-#include "../../../addons/library.xbmc.addon/libXBMC_addon.h"
-#include "../../../xbmc/addons/AddonCallbacks.h"
+#include <sys/stat.h>
+#include "addons/kodi-addon-dev-kit/include/kodi/xbmc_addon_types.h"
+#include "addons/kodi-addon-dev-kit/include/kodi/libXBMC_addon.h"
+#include "addons/binary/interfaces/api1/Addon/AddonCallbacksAddon.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -36,6 +37,7 @@
 
 using namespace std;
 using namespace ADDON;
+using namespace V1::KodiAPI::AddOn;
 
 extern "C"
 {
@@ -47,7 +49,7 @@ DLLEXPORT void* XBMC_register_me(void *hdl)
     fprintf(stderr, "libXBMC_addon-ERROR: XBMC_register_me is called with NULL handle !!!\n");
   else
   {
-    cb = ((AddonCB*)hdl)->AddOnLib_RegisterMe(((AddonCB*)hdl)->addonData);
+    cb = (CB_AddOnLib*)((AddonCB*)hdl)->AddOnLib_RegisterMe(((AddonCB*)hdl)->addonData);
     if (!cb)
       fprintf(stderr, "libXBMC_addon-ERROR: XBMC_register_me can't get callback table from XBMC !!!\n");
   }
@@ -74,6 +76,14 @@ DLLEXPORT bool XBMC_get_setting(void *hdl, void* cb, const char* settingName, vo
     return false;
 
   return ((CB_AddOnLib*)cb)->GetSetting(((AddonCB*)hdl)->addonData, settingName, settingValue);
+}
+
+DLLEXPORT char* XBMC_translate_special(void *hdl, void* cb, const char* source)
+{
+  if (cb == NULL)
+    return NULL;
+
+  return ((CB_AddOnLib*)cb)->TranslateSpecialProtocol(source);
 }
 
 DLLEXPORT void XBMC_queue_notification(void *hdl, void* cb, const queue_msg_t type, const char *msg)
@@ -113,8 +123,7 @@ DLLEXPORT char* XBMC_get_dvd_menu_language(void *hdl, void* cb)
   if (cb == NULL)
     return "";
 
-  string buffer = ((CB_AddOnLib*)cb)->GetDVDMenuLanguage(((AddonCB*)hdl)->addonData);
-  return strdup(buffer.c_str());
+  return ((CB_AddOnLib*)cb)->GetDVDMenuLanguage(((AddonCB*)hdl)->addonData);
 }
 
 DLLEXPORT void XBMC_free_string(void* hdl, void* cb, char* str)
@@ -141,10 +150,10 @@ DLLEXPORT void* XBMC_open_file_for_write(void *hdl, void* cb, const char* strFil
   return ((CB_AddOnLib*)cb)->OpenFileForWrite(((AddonCB*)hdl)->addonData, strFileName, bOverWrite);
 }
 
-DLLEXPORT unsigned int XBMC_read_file(void *hdl, void* cb, void* file, void* lpBuf, int64_t uiBufSize)
+DLLEXPORT ssize_t XBMC_read_file(void *hdl, void* cb, void* file, void* lpBuf, size_t uiBufSize)
 {
   if (cb == NULL)
-    return 0;
+    return -1;
 
   return ((CB_AddOnLib*)cb)->ReadFile(((AddonCB*)hdl)->addonData, file, lpBuf, uiBufSize);
 }
@@ -157,10 +166,10 @@ DLLEXPORT bool XBMC_read_file_string(void *hdl, void* cb, void* file, char *szLi
   return ((CB_AddOnLib*)cb)->ReadFileString(((AddonCB*)hdl)->addonData, file, szLine, iLineLength);
 }
 
-DLLEXPORT int XBMC_write_file(void *hdl, void* cb, void* file, const void* lpBuf, int64_t uiBufSize)
+DLLEXPORT ssize_t XBMC_write_file(void *hdl, void* cb, void* file, const void* lpBuf, size_t uiBufSize)
 {
   if (cb == NULL)
-    return false;
+    return -1;
 
   return ((CB_AddOnLib*)cb)->WriteFile(((AddonCB*)hdl)->addonData, file, lpBuf, uiBufSize);
 }
@@ -205,6 +214,14 @@ DLLEXPORT int64_t XBMC_get_file_length(void *hdl, void* cb, void* file)
   return ((CB_AddOnLib*)cb)->GetFileLength(((AddonCB*)hdl)->addonData, file);
 }
 
+DLLEXPORT double XBMC_get_file_download_speed(void *hdl, void* cb, void* file)
+{
+  if (cb == NULL)
+    return 0.0f;
+
+  return ((CB_AddOnLib*)cb)->GetFileDownloadSpeed(((AddonCB*)hdl)->addonData, file);
+}
+
 DLLEXPORT void XBMC_close_file(void *hdl, void* cb, void* file)
 {
   if (cb == NULL)
@@ -229,7 +246,7 @@ DLLEXPORT bool XBMC_file_exists(void *hdl, void* cb, const char *strFileName, bo
   return ((CB_AddOnLib*)cb)->FileExists(((AddonCB*)hdl)->addonData, strFileName, bUseCache);
 }
 
-DLLEXPORT int XBMC_stat_file(void *hdl, void* cb, const char *strFileName, struct ::__stat64* buffer)
+DLLEXPORT int XBMC_stat_file(void *hdl, void* cb, const char *strFileName, struct __stat64* buffer)
 {
   if (cb == NULL)
     return -1;
@@ -248,7 +265,7 @@ DLLEXPORT bool XBMC_delete_file(void *hdl, void* cb, const char *strFileName)
 DLLEXPORT bool XBMC_can_open_directory(void *hdl, void* cb, const char* strURL)
 {
   if (cb == NULL)
-    return 0;
+    return false;
 
   return ((CB_AddOnLib*)cb)->CanOpenDirectory(((AddonCB*)hdl)->addonData, strURL);
 }
@@ -275,6 +292,46 @@ DLLEXPORT bool XBMC_remove_directory(void *hdl, void* cb, const char *strPath)
     return false;
 
   return ((CB_AddOnLib*)cb)->RemoveDirectory(((AddonCB*)hdl)->addonData, strPath);
+}
+
+DLLEXPORT bool XBMC_get_directory(void *hdl, void* cb, const char *strPath, const char* mask, VFSDirEntry** items, unsigned int* num_items)
+{
+  if (cb == NULL)
+    return false;
+
+  return ((CB_AddOnLib*)cb)->GetDirectory(((AddonCB*)hdl)->addonData, strPath, mask, items, num_items);
+}
+
+DLLEXPORT void XBMC_free_directory(void *hdl, void* cb, VFSDirEntry* items, unsigned int num_items)
+{
+  if (cb == NULL)
+    return;
+
+  ((CB_AddOnLib*)cb)->FreeDirectory(((AddonCB*)hdl)->addonData, items, num_items);
+}
+
+DLLEXPORT void* XBMC_curl_create(void *hdl, void* cb, const char* strURL)
+{
+  if (cb == NULL)
+    return NULL;
+
+  return ((CB_AddOnLib*)cb)->CURLCreate(((AddonCB*)hdl)->addonData, strURL);
+}
+
+DLLEXPORT bool XBMC_curl_add_option(void *hdl, void* cb, void *file, XFILE::CURLOPTIONTYPE type, const char* name, const char *value)
+{
+  if (cb == NULL)
+    return false;
+
+  return ((CB_AddOnLib*)cb)->CURLAddOption(((AddonCB*)hdl)->addonData, file, type, name, value);
+}
+
+DLLEXPORT bool XBMC_curl_open(void *hdl, void* cb, void *file, unsigned int flags)
+{
+  if (cb == NULL)
+    return false;
+
+  return ((CB_AddOnLib*)cb)->CURLOpen(((AddonCB*)hdl)->addonData, file, flags);
 }
 
 };

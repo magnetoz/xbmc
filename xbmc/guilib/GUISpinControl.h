@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,6 +28,8 @@
  *
  */
 
+#include <vector>
+
 #include "GUIControl.h"
 #include "GUITexture.h"
 #include "GUILabel.h"
@@ -44,7 +46,7 @@
 class CGUISpinControl : public CGUIControl
 {
 public:
-  CGUISpinControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& textureUp, const CTextureInfo& textureDown, const CTextureInfo& textureUpFocus, const CTextureInfo& textureDownFocus, const CLabelInfo& labelInfo, int iType);
+  CGUISpinControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& textureUp, const CTextureInfo& textureDown, const CTextureInfo& textureUpFocus, const CTextureInfo& textureDownFocus, const CTextureInfo& textureUpDisabled, const CTextureInfo& textureDownDisabled, const CLabelInfo& labelInfo, int iType);
   virtual ~CGUISpinControl(void);
   virtual CGUISpinControl *Clone() const { return new CGUISpinControl(*this); };
 
@@ -65,7 +67,7 @@ public:
   void SetRange(int iStart, int iEnd);
   void SetFloatRange(float fStart, float fEnd);
   void SetValue(int iValue);
-  void SetValueFromLabel(const CStdString &label);
+  void SetValueFromLabel(const std::string &label);
   void SetFloatValue(float fValue);
   void SetStringValue(const std::string& strValue);
   int GetValue() const;
@@ -85,7 +87,7 @@ public:
   void SetShowRange(bool bOnoff) ;
   void SetShowOnePage(bool showOnePage) { m_showOnePage = showOnePage; };
   void Clear();
-  virtual CStdString GetDescription() const;
+  virtual std::string GetDescription() const;
   bool IsFocusedOnUp() const;
 
   virtual bool IsVisible() const;
@@ -125,6 +127,8 @@ protected:
   CGUITexture m_imgspinDown;
   CGUITexture m_imgspinUpFocus;
   CGUITexture m_imgspinDownFocus;
+  CGUITexture m_imgspinUpDisabled;
+  CGUITexture m_imgspinDownDisabled;
   CGUILabel   m_label;
   bool m_bShowRange;
   char m_szTyped[10];

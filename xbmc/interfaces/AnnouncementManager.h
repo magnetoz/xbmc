@@ -1,7 +1,7 @@
 #pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2014 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,34 +18,61 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+#include <vector>
 
 #include "IAnnouncer.h"
 #include "FileItem.h"
 #include "threads/CriticalSection.h"
-#include "utils/GlobalsHandling.h"
-#include <vector>
+#include "threads/Thread.h"
+#include "threads/Event.h"
+#include "utils/Variant.h"
+
+class CVariant;
 
 namespace ANNOUNCEMENT
 {
-  class CAnnouncementManager
+  class CAnnouncementManager : public CThread
   {
   public:
+    CAnnouncementManager();
+    virtual ~CAnnouncementManager();
 
-     class Globals
-     {
-     public:
-       CCriticalSection m_critSection;
-       std::vector<IAnnouncer *> m_announcers;
-     };
+    static CAnnouncementManager& GetInstance();
 
-    static void AddAnnouncer(IAnnouncer *listener);
-    static void RemoveAnnouncer(IAnnouncer *listener);
-    static void Announce(AnnouncementFlag flag, const char *sender, const char *message);
-    static void Announce(AnnouncementFlag flag, const char *sender, const char *message, CVariant &data);
-    static void Announce(AnnouncementFlag flag, const char *sender, const char *message, CFileItemPtr item);
-    static void Announce(AnnouncementFlag flag, const char *sender, const char *message, CFileItemPtr item, CVariant &data);
+    void Start();
+    void Deinitialize();
+
+    void AddAnnouncer(IAnnouncer *listener);
+    void RemoveAnnouncer(IAnnouncer *listener);
+
+    void Announce(AnnouncementFlag flag, const char *sender, const char *message);
+    void Announce(AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data);
+    void Announce(AnnouncementFlag flag, const char *sender, const char *message,
+        const std::shared_ptr<const CFileItem>& item);
+    void Announce(AnnouncementFlag flag, const char *sender, const char *message,
+        const std::shared_ptr<const CFileItem>& item, const CVariant &data);
+
+  protected:
+    void Process();
+    void DoAnnounce(AnnouncementFlag flag, const char *sender, const char *message, CFileItemPtr item, const CVariant &data);
+    void DoAnnounce(AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data);
+
+    struct CAnnounceData
+    {
+      AnnouncementFlag flag;
+      std::string sender;
+      std::string message;
+      CFileItemPtr item;
+      CVariant data;
+    };
+    std::list<CAnnounceData> m_announcementQueue;
+    CEvent m_queueEvent;
+
   private:
+    CAnnouncementManager(const CAnnouncementManager&);
+    CAnnouncementManager const& operator=(CAnnouncementManager const&);
+
+    CCriticalSection m_critSection;
+    std::vector<IAnnouncer *> m_announcers;
   };
 }
-
-XBMC_GLOBAL_REF(ANNOUNCEMENT::CAnnouncementManager::Globals,g_announcementManager_globals);

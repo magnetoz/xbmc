@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,17 +13,13 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
-#include <sstream>
-
 #include "DbUrl.h"
-#include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
-
-using namespace std;
 
 CDbUrl::CDbUrl()
 {
@@ -147,7 +143,7 @@ bool CDbUrl::validateOption(const std::string &key, const CVariant &value)
 void CDbUrl::updateOptions()
 {
   // Update the options string in the CURL object
-  string options = GetOptionsString();
+  std::string options = GetOptionsString();
   if (!options.empty())
     options = "?" + options;
 

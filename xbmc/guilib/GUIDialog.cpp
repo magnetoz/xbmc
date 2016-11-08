@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,20 +21,20 @@
 #include "GUIDialog.h"
 #include "GUIWindowManager.h"
 #include "GUILabelControl.h"
-#include "GUIAudioManager.h"
-#include "GUIInfoManager.h"
 #include "threads/SingleLock.h"
 #include "utils/TimeUtils.h"
 #include "Application.h"
-#include "ApplicationMessenger.h"
-#include "Key.h"
+#include "messaging/ApplicationMessenger.h"
+#include "input/Key.h"
 
-CGUIDialog::CGUIDialog(int id, const CStdString &xmlFile)
+using namespace KODI::MESSAGING;
+
+CGUIDialog::CGUIDialog(int id, const std::string &xmlFile, DialogModalityType modalityType /* = DialogModalityType::MODAL */)
     : CGUIWindow(id, xmlFile)
 {
-  m_bModal = true;
+  m_modalityType = modalityType;
   m_wasRunning = false;
-  m_renderOrder = 1;
+  m_renderOrder = RENDER_ORDER_DIALOG;
   m_autoClosing = false;
   m_showStartTime = 0;
   m_showDuration = 0;
@@ -91,10 +91,6 @@ bool CGUIDialog::OnMessage(CGUIMessage& message)
   {
   case GUI_MSG_WINDOW_DEINIT:
     {
-      CGUIWindow *pWindow = g_windowManager.GetWindow(g_windowManager.GetActiveWindow());
-      if (pWindow)
-        g_windowManager.ShowOverlay(pWindow->GetOverlayState());
-
       CGUIWindow::OnMessage(message);
       return true;
     }
@@ -137,99 +133,12 @@ void CGUIDialog::UpdateVisibility()
 {
   if (m_visibleCondition)
   {
-    if (g_infoManager.GetBoolValue(m_visibleCondition))
-      Show();
+    if (m_visibleCondition->Get())
+      Open();
     else
       Close();
   }
-}
-
-void CGUIDialog::DoModal_Internal(int iWindowID /*= WINDOW_INVALID */, const CStdString &param /* = "" */)
-{
-  //Lock graphic context here as it is sometimes called from non rendering threads
-  //maybe we should have a critical section per window instead??
-  CSingleLock lock(g_graphicsContext);
-
-  if (!g_windowManager.Initialized())
-    return; // don't do anything
-
-  m_closing = false;
-  m_bModal = true;
-  // set running before it's added to the window manager, else the auto-show code
-  // could show it as well if we are in a different thread from
-  // the main rendering thread (this should really be handled via
-  // a thread message though IMO)
-  m_active = true;
-  g_windowManager.RouteToWindow(this);
-
-  // active this window...
-  CGUIMessage msg(GUI_MSG_WINDOW_INIT, 0, 0, WINDOW_INVALID, iWindowID);
-  msg.SetStringParam(param);
-  OnMessage(msg);
-
-  if (!m_windowLoaded)
-    Close(true);
-
-  lock.Leave();
-
-  while (m_active && !g_application.m_bStop)
-  {
-    g_windowManager.ProcessRenderLoop();
-  }
-}
-
-void CGUIDialog::Show_Internal()
-{
-  //Lock graphic context here as it is sometimes called from non rendering threads
-  //maybe we should have a critical section per window instead??
-  CSingleLock lock(g_graphicsContext);
-
-  if (m_active && !m_closing && !IsAnimating(ANIM_TYPE_WINDOW_CLOSE)) return;
-
-  if (!g_windowManager.Initialized())
-    return; // don't do anything
-
-  m_bModal = false;
-
-  // set running before it's added to the window manager, else the auto-show code
-  // could show it as well if we are in a different thread from
-  // the main rendering thread (this should really be handled via
-  // a thread message though IMO)
-  m_active = true;
-  m_closing = false;
-  g_windowManager.AddModeless(this);
-
-  // active this window...
-  CGUIMessage msg(GUI_MSG_WINDOW_INIT, 0, 0);
-  OnMessage(msg);
-}
-
-void CGUIDialog::DoModal(int iWindowID /*= WINDOW_INVALID */, const CStdString &param)
-{
-  if (!g_application.IsCurrentThread())
-  {
-    // make sure graphics lock is not held
-    CSingleExit leaveIt(g_graphicsContext);
-    CApplicationMessenger::Get().DoModal(this, iWindowID, param);
-  }
-  else
-    DoModal_Internal(iWindowID, param);
-}
-
-void CGUIDialog::Show()
-{
-  if (!g_application.IsCurrentThread())
-  {
-    // make sure graphics lock is not held
-    CSingleExit leaveIt(g_graphicsContext);
-    CApplicationMessenger::Get().Show(this);
-  }
-  else
-    Show_Internal();
-}
-
-void CGUIDialog::FrameMove()
-{
+  
   if (m_autoClosing)
   { // check if our timer is running
     if (!m_showStartTime)
@@ -246,7 +155,60 @@ void CGUIDialog::FrameMove()
       }
     }
   }
-  CGUIWindow::FrameMove();
+}
+
+void CGUIDialog::Open_Internal(const std::string &param /* = "" */)
+{
+  CGUIDialog::Open_Internal(m_modalityType != DialogModalityType::MODELESS, param);
+}
+
+void CGUIDialog::Open_Internal(bool bProcessRenderLoop, const std::string &param /* = "" */)
+{
+  // Lock graphic context here as it is sometimes called from non rendering threads
+  // maybe we should have a critical section per window instead??
+  CSingleLock lock(g_graphicsContext);
+
+  if (!g_windowManager.Initialized() ||
+      (m_active && !m_closing && !IsAnimating(ANIM_TYPE_WINDOW_CLOSE)))
+    return;
+
+  // set running before it's added to the window manager, else the auto-show code
+  // could show it as well if we are in a different thread from the main rendering
+  // thread (this should really be handled via a thread message though IMO)
+  m_active = true;
+  m_closing = false;
+  g_windowManager.RegisterDialog(this);
+
+  // active this window
+  CGUIMessage msg(GUI_MSG_WINDOW_INIT, 0, 0);
+  msg.SetStringParam(param);
+  OnMessage(msg);
+
+  // process render loop
+  if (bProcessRenderLoop)
+  {
+    if (!m_windowLoaded)
+      Close(true);
+
+    lock.Leave();
+
+    while (m_active && !g_application.m_bStop)
+    {
+      g_windowManager.ProcessRenderLoop();
+    }
+  }
+}
+
+void CGUIDialog::Open(const std::string &param /* = "" */)
+{
+  if (!g_application.IsCurrentThread())
+  {
+    // make sure graphics lock is not held
+    CSingleExit leaveIt(g_graphicsContext);
+    CApplicationMessenger::GetInstance().SendMsg(TMSG_GUI_DIALOG_OPEN, -1, -1, static_cast<void*>(this), param);
+  }
+  else
+    Open_Internal(param);
 }
 
 void CGUIDialog::Render()
@@ -260,7 +222,7 @@ void CGUIDialog::Render()
 void CGUIDialog::SetDefaults()
 {
   CGUIWindow::SetDefaults();
-  m_renderOrder = 1;
+  m_renderOrder = RENDER_ORDER_DIALOG;
 }
 
 void CGUIDialog::SetAutoClose(unsigned int timeoutMs)
@@ -274,4 +236,14 @@ void CGUIDialog::ResetAutoClose(void)
 {
   if (m_autoClosing && m_active)
     m_showStartTime = CTimeUtils::GetFrameTime();
+}
+
+void CGUIDialog::CancelAutoClose(void)
+{
+  m_autoClosing = false;
+}
+
+void CGUIDialog::ProcessRenderLoop(bool renderOnly)
+{
+  g_windowManager.ProcessRenderLoop(renderOnly);
 }

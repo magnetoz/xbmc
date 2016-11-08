@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,8 +19,6 @@
  *
  */
 
-#include "utils/LabelFormatter.h"
-
 typedef enum {
   SORT_METHOD_NONE=0,
   SORT_METHOD_LABEL,
@@ -34,6 +32,7 @@ typedef enum {
   SORT_METHOD_TITLE,
   SORT_METHOD_TITLE_IGNORE_THE,
   SORT_METHOD_ARTIST,
+  SORT_METHOD_ARTIST_AND_YEAR,
   SORT_METHOD_ARTIST_IGNORE_THE,
   SORT_METHOD_ALBUM,
   SORT_METHOD_ALBUM_IGNORE_THE,
@@ -41,6 +40,7 @@ typedef enum {
   SORT_METHOD_COUNTRY,
   SORT_METHOD_YEAR,
   SORT_METHOD_VIDEO_RATING,
+  SORT_METHOD_VIDEO_USER_RATING,
   SORT_METHOD_DATEADDED,
   SORT_METHOD_PROGRAM_COUNT,
   SORT_METHOD_PLAYLIST_ORDER,
@@ -50,6 +50,7 @@ typedef enum {
   SORT_METHOD_VIDEO_SORT_TITLE_IGNORE_THE,
   SORT_METHOD_PRODUCTIONCODE,
   SORT_METHOD_SONG_RATING,
+  SORT_METHOD_SONG_USER_RATING,
   SORT_METHOD_MPAA_RATING,
   SORT_METHOD_VIDEO_RUNTIME,
   SORT_METHOD_STUDIO,
@@ -61,15 +62,8 @@ typedef enum {
   SORT_METHOD_LISTENERS,
   SORT_METHOD_UNSORTED,
   SORT_METHOD_CHANNEL,
+  SORT_METHOD_CHANNEL_NUMBER,
   SORT_METHOD_BITRATE,
   SORT_METHOD_DATE_TAKEN,
   SORT_METHOD_MAX
 } SORT_METHOD;
-
-typedef struct
-{
-  SORT_METHOD m_sortMethod;
-  int m_buttonLabel;
-  LABEL_MASKS m_labelMasks;
-} SORT_METHOD_DETAILS;
-

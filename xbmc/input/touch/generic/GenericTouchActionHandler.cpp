@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,12 +19,14 @@
  */
 
 #include "GenericTouchActionHandler.h"
-#include "ApplicationMessenger.h"
+#include "messaging/ApplicationMessenger.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
+#include "input/Key.h"
 #include "windowing/WinEvents.h"
 
-CGenericTouchActionHandler &CGenericTouchActionHandler::Get()
+using namespace KODI::MESSAGING;
+
+CGenericTouchActionHandler &CGenericTouchActionHandler::GetInstance()
 {
   static CGenericTouchActionHandler sTouchAction;
   return sTouchAction;
@@ -144,11 +146,19 @@ void CGenericTouchActionHandler::OnRotate(float centerX, float centerY, float an
 
 int CGenericTouchActionHandler::QuerySupportedGestures(float x, float y)
 {
-  CGUIMessage msg(GUI_MSG_GESTURE_NOTIFY, 0, 0, x, y);
+  CGUIMessage msg(GUI_MSG_GESTURE_NOTIFY, 0, 0, (int)x, (int)y);
   if (!g_windowManager.SendMessage(msg))
     return 0;
 
-  return msg.GetParam1();
+  int result = 0;
+  if (msg.GetPointer())
+  {
+    int *p = static_cast<int*>(msg.GetPointer());
+    msg.SetPointer(nullptr);
+    result = *p;
+    delete p;
+  }
+  return result;
 }
 
 void CGenericTouchActionHandler::touch(uint8_t type, uint8_t button, uint16_t x, uint16_t y)
@@ -184,14 +194,13 @@ void CGenericTouchActionHandler::sendEvent(int actionId, float x, float y, float
 
 void CGenericTouchActionHandler::focusControl(float x, float y)
 {
-  // Send a mouse motion event for getting the current guiitem selected
   XBMC_Event newEvent;
   memset(&newEvent, 0, sizeof(newEvent));
 
-  newEvent.type = XBMC_MOUSEMOTION;
-  newEvent.motion.type = XBMC_MOUSEMOTION;
-  newEvent.motion.x = x;
-  newEvent.motion.y = y;
+  newEvent.type = XBMC_SETFOCUS;
+  newEvent.focus.type = XBMC_SETFOCUS;
+  newEvent.focus.x = (uint16_t)x;
+  newEvent.focus.y = (uint16_t)y;
 
   CWinEvents::MessagePush(&newEvent);
 }

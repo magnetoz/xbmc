@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,191 +20,103 @@
 
 #include "system.h"
 #include "CodecFactory.h"
-#include "MP3codec.h"
-#include "OGGcodec.h"
-#include "FLACcodec.h"
-#include "WAVcodec.h"
-#include "ModplugCodec.h"
-#include "NSFCodec.h"
-#ifdef HAS_SPC_CODEC
-#include "SPCCodec.h"
-#endif
-#include "SIDCodec.h"
-#include "VGMCodec.h"
-#include "YMCodec.h"
-#include "ADPCMCodec.h"
-#include "TimidityCodec.h"
-#ifdef HAS_ASAP_CODEC
-#include "ASAPCodec.h"
-#endif
 #include "URL.h"
-#include "DVDPlayerCodec.h"
-#include "PCMCodec.h"
+#include "VideoPlayerCodec.h"
+#include "utils/StringUtils.h"
+#include "addons/AudioDecoder.h"
+#include "addons/BinaryAddonCache.h"
+#include "ServiceBroker.h"
 
-ICodec* CodecFactory::CreateCodec(const CStdString& strFileType)
+using namespace ADDON;
+
+ICodec* CodecFactory::CreateCodec(const std::string &strFileType)
 {
-  if (strFileType.Equals("mp3") || strFileType.Equals("mp2"))
-    return new MP3Codec();
-  else if (strFileType.Equals("pcm") || strFileType.Equals("l16"))
-    return new PCMCodec();
-  else if (strFileType.Equals("ape") || strFileType.Equals("mac"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("cdda"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("mpc") || strFileType.Equals("mp+") || strFileType.Equals("mpp"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("shn"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("mka"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("flac"))
-    return new FLACCodec();
-  else if (strFileType.Equals("wav"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("dts") || strFileType.Equals("ac3") ||
-           strFileType.Equals("m4a") || strFileType.Equals("aac") ||
-           strFileType.Equals("pvr"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("wv"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("669")  ||  strFileType.Equals("abc") ||
-           strFileType.Equals("amf")  ||  strFileType.Equals("ams") ||
-           strFileType.Equals("dbm")  ||  strFileType.Equals("dmf") ||
-           strFileType.Equals("dsm")  ||  strFileType.Equals("far") ||
-           strFileType.Equals("it")   ||  strFileType.Equals("j2b") ||
-           strFileType.Equals("mdl")  ||  strFileType.Equals("med") ||
-           strFileType.Equals("mod")  ||  strFileType.Equals("itgz")||
-           strFileType.Equals("mt2")  ||  strFileType.Equals("mtm") ||
-           strFileType.Equals("okt")  ||  strFileType.Equals("pat") ||
-           strFileType.Equals("psm")  ||  strFileType.Equals("ptm") ||
-           strFileType.Equals("s3m")  ||  strFileType.Equals("stm") ||
-           strFileType.Equals("ult")  ||  strFileType.Equals("umx") ||
-           strFileType.Equals("xm")   || strFileType.Equals("mdgz") ||
-           strFileType.Equals("s3gz") || strFileType.Equals("xmgz"))
-    return new ModplugCodec();
-  else if (strFileType.Equals("nsf") || strFileType.Equals("nsfstream"))
-    return new NSFCodec();
-#ifdef HAS_SPC_CODEC
-  else if (strFileType.Equals("spc"))
-    return new SPCCodec();
-#endif
-  else if (strFileType.Equals("sid") || strFileType.Equals("sidstream"))
-    return new SIDCodec();
-  else if (VGMCodec::IsSupportedFormat(strFileType))
-    return new VGMCodec();
-  else if (strFileType.Equals("ym"))
-    return new YMCodec();
-  else if (strFileType.Equals("wma"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("aiff") || strFileType.Equals("aif"))
-    return new DVDPlayerCodec();
-  else if (strFileType.Equals("xwav"))
-    return new ADPCMCodec();
-  else if (TimidityCodec::IsSupportedFormat(strFileType))
-    return new TimidityCodec();
-#ifdef HAS_ASAP_CODEC
-  else if (ASAPCodec::IsSupportedFormat(strFileType) || strFileType.Equals("asapstream"))
-    return new ASAPCodec();
-#endif
-  else if (strFileType.Equals("tta"))
-    return new DVDPlayerCodec();
+  std::string fileType = strFileType;
+  StringUtils::ToLower(fileType);
+  VECADDONS codecs;
+  ADDON::CBinaryAddonCache &addonCache = CServiceBroker::GetBinaryAddonCache();
+  addonCache.GetAddons(codecs, ADDON::ADDON_AUDIODECODER);
+  for (size_t i=0;i<codecs.size();++i)
+  {
+    std::shared_ptr<CAudioDecoder> dec(std::static_pointer_cast<CAudioDecoder>(codecs[i]));
+    std::vector<std::string> exts = StringUtils::Split(dec->GetExtensions(), "|");
+    if (std::find(exts.begin(), exts.end(), "."+fileType) != exts.end())
+    {
+      CAudioDecoder* result = new CAudioDecoder(*dec);
+      static_cast<AudioDecoderDll&>(*result).Create();
+      return result;
+    }
+  }
 
-  return NULL;
+  VideoPlayerCodec *dvdcodec = new VideoPlayerCodec();
+  return dvdcodec;
 }
 
-ICodec* CodecFactory::CreateCodecDemux(const CStdString& strFile, const CStdString& strContent, unsigned int filecache)
+ICodec* CodecFactory::CreateCodecDemux(const CFileItem& file, unsigned int filecache)
 {
-  CURL urlFile(strFile);
-  if( strContent.Equals("audio/mpeg")
-  ||  strContent.Equals("audio/mp3") )
-    return new MP3Codec();
-  else if (strContent.Left(9).Equals("audio/l16"))
+  CURL urlFile(file.GetPath());
+  std::string content = file.GetMimeType();
+  StringUtils::ToLower(content);
+  if (!content.empty())
   {
-    PCMCodec * pcm_codec = new PCMCodec();
-    pcm_codec->SetMimeParams(strContent);
-    return pcm_codec;
+    VECADDONS codecs;
+    CBinaryAddonCache &addonCache = CServiceBroker::GetBinaryAddonCache();
+    addonCache.GetAddons(codecs, ADDON_AUDIODECODER);
+    for (size_t i=0;i<codecs.size();++i)
+    {
+      std::shared_ptr<CAudioDecoder> dec(std::static_pointer_cast<CAudioDecoder>(codecs[i]));
+      std::vector<std::string> mime = StringUtils::Split(dec->GetMimetypes(), "|");
+      if (std::find(mime.begin(), mime.end(), content) != mime.end())
+      {
+        CAudioDecoder* result = new CAudioDecoder(*dec);
+        static_cast<AudioDecoderDll&>(*result).Create();
+        return result;
+      }
+    }
   }
-  else if( strContent.Equals("audio/aac")
-    || strContent.Equals("audio/aacp") )
+
+  if( content == "audio/mpeg"       ||
+      content == "audio/mpeg3"      ||
+      content == "audio/mp3"        ||
+      content == "audio/aac"        ||
+      content == "audio/aacp"       ||
+      content == "audio/x-ms-wma"   ||
+      content == "audio/x-ape"      ||
+      content == "audio/ape"        ||
+      content == "application/ogg"  ||
+      content == "audio/ogg"        ||
+      content == "audio/x-xbmc-pcm" ||
+      content == "audio/flac"       || 
+      content == "audio/x-flac"     || 
+      content == "application/x-flac"
+      )
   {
-    DVDPlayerCodec *pCodec = new DVDPlayerCodec;
-    if (urlFile.GetProtocol() == "shout" )
-      pCodec->SetContentType(strContent);
-    return pCodec;
-  }
-  else if( strContent.Equals("audio/x-ms-wma") )
-    return new DVDPlayerCodec();
-  else if( strContent.Equals("audio/x-ape") || strContent.Equals("audio/ape") )
-    return new DVDPlayerCodec();
-  else if( strContent.Equals("application/ogg") || strContent.Equals("audio/ogg"))
-    return CreateOGGCodec(strFile,filecache);
-  else if (strContent.Equals("audio/x-xbmc-pcm"))
-  {
-    // audio/x-xbmc-pcm this is the used codec for AirTunes
-    // (apples audio only streaming)
-    DVDPlayerCodec *dvdcodec = new DVDPlayerCodec();
-    dvdcodec->SetContentType(strContent);
+    VideoPlayerCodec *dvdcodec = new VideoPlayerCodec();
+    dvdcodec->SetContentType(content);
     return dvdcodec;
   }
-  else if (strContent.Equals("audio/flac") || strContent.Equals("audio/x-flac") || strContent.Equals("application/x-flac"))
-    return new FLACCodec();
-
-  if (urlFile.GetProtocol() == "shout")
+  else if (urlFile.IsProtocol("shout"))
   {
-    return new MP3Codec(); // if we got this far with internet radio - content-type was wrong. gamble on mp3.
+    VideoPlayerCodec *dvdcodec = new VideoPlayerCodec();
+    dvdcodec->SetContentType("audio/mp3");
+    return dvdcodec; // if we got this far with internet radio - content-type was wrong. gamble on mp3.
   }
-
-  if (urlFile.GetFileType().Equals("wav") || strContent.Equals("audio/wav") || strContent.Equals("audio/x-wav"))
+  else if (urlFile.IsFileType("wav") ||
+      content == "audio/wav" ||
+      content == "audio/x-wav")
   {
-    ICodec* codec;
-    //lets see what it contains...
-    //this kinda sucks 'cause if it's a plain wav file the file
-    //will be opened, sniffed and closed 2 times before it is opened *again* for wav
-    //would be better if the papcodecs could work with bitstreams instead of filenames.
-    DVDPlayerCodec *dvdcodec = new DVDPlayerCodec();
+    VideoPlayerCodec *dvdcodec = new VideoPlayerCodec();
     dvdcodec->SetContentType("audio/x-spdif-compressed");
-    if (dvdcodec->Init(strFile, filecache))
+    if (dvdcodec->Init(file, filecache))
     {
       return dvdcodec;
     }
-    delete dvdcodec;
-    codec = new ADPCMCodec();
-    if (codec->Init(strFile, filecache))
-    {
-      return codec;
-    }
-    delete codec;
 
-    codec = new WAVCodec();
-    if (codec->Init(strFile, filecache))
-    {
-      return codec;
-    }
-    delete codec;
+    dvdcodec = new VideoPlayerCodec();
+    dvdcodec->SetContentType(content);
+    return dvdcodec;
   }
-  else if (urlFile.GetFileType().Equals("ogg") || urlFile.GetFileType().Equals("oggstream") || urlFile.GetFileType().Equals("oga"))
-    return CreateOGGCodec(strFile,filecache);
-
-  //default
-  return CreateCodec(urlFile.GetFileType());
-}
-
-ICodec* CodecFactory::CreateOGGCodec(const CStdString& strFile,
-                                     unsigned int filecache)
-{
-  // oldnemesis: we want to use OGGCodec() for OGG music since unlike DVDCodec 
-  // it provides better timings for Karaoke. However OGGCodec() cannot handle 
-  // ogg-flac and ogg videos, that's why this block.
-  ICodec* codec = new OGGCodec();
-  try
-  {
-    if (codec->Init(strFile, filecache))
-      return codec;
-  }
-  catch( ... )
-  {
-  }
-  delete codec;
-  return new DVDPlayerCodec();
+  else
+    return CreateCodec(urlFile.GetFileType());
 }
 

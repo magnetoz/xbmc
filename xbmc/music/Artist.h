@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,10 +21,14 @@
  */
 
 #include <map>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "utils/ScraperUrl.h"
+#include "utils/StringUtils.h"
 #include "utils/Fanart.h"
+#include "utils/ScraperUrl.h"
+#include "XBDateTime.h"
 
 class TiXmlNode;
 class CAlbum;
@@ -36,30 +40,38 @@ public:
   long idArtist;
   bool operator<(const CArtist& a) const
   {
-    if (strArtist < a.strArtist) return true;
-    if (strArtist > a.strArtist) return false;
+    if (strMusicBrainzArtistID.empty() && a.strMusicBrainzArtistID.empty())
+    {
+      if (strArtist < a.strArtist) return true;
+      if (strArtist > a.strArtist) return false;
+      return false;
+    }
+
     if (strMusicBrainzArtistID < a.strMusicBrainzArtistID) return true;
     if (strMusicBrainzArtistID > a.strMusicBrainzArtistID) return false;
     return false;
   }
+  
+  void MergeScrapedArtist(const CArtist& source, bool override = true);
 
   void Reset()
   {
-    strArtist.Empty();
+    strArtist.clear();
     genre.clear();
-    strBiography.Empty();
+    strBiography.clear();
     styles.clear();
     moods.clear();
     instruments.clear();
-    strBorn.Empty();
-    strFormed.Empty();
-    strDied.Empty();
-    strDisbanded.Empty();
+    strBorn.clear();
+    strFormed.clear();
+    strDied.clear();
+    strDisbanded.clear();
     yearsActive.clear();
     thumbURL.Clear();
     discography.clear();
     idArtist = -1;
-    strPath.Empty();
+    strPath.clear();
+    dateAdded.Reset();
   }
 
   /*! \brief Load artist information from an XML file.
@@ -70,24 +82,27 @@ public:
    \sa CVideoInfoTag::Load
    */
   bool Load(const TiXmlElement *element, bool append = false, bool prioritise = false);
-  bool Save(TiXmlNode *node, const CStdString &tag, const CStdString& strPath);
+  bool Save(TiXmlNode *node, const std::string &tag, const std::string& strPath);
 
-  CStdString strArtist;
-  CStdString strMusicBrainzArtistID;
+  void SetDateAdded(const std::string& strDateAdded);
+
+  std::string strArtist;
+  std::string strMusicBrainzArtistID;
   std::vector<std::string> genre;
-  CStdString strBiography;
+  std::string strBiography;
   std::vector<std::string> styles;
   std::vector<std::string> moods;
   std::vector<std::string> instruments;
-  CStdString strBorn;
-  CStdString strFormed;
-  CStdString strDied;
-  CStdString strDisbanded;
+  std::string strBorn;
+  std::string strFormed;
+  std::string strDied;
+  std::string strDisbanded;
   std::vector<std::string> yearsActive;
-  CStdString strPath;
+  std::string strPath;
   CScraperUrl thumbURL;
   CFanart fanart;
-  std::vector<std::pair<CStdString,CStdString> > discography;
+  std::vector<std::pair<std::string,std::string> > discography;
+  CDateTime dateAdded;
 };
 
 class CArtistCredit
@@ -97,13 +112,19 @@ class CArtistCredit
 
 public:
   CArtistCredit() { }
-  CArtistCredit(std::string strArtist, std::string strJoinPhrase) : m_strArtist(strArtist), m_strJoinPhrase(strJoinPhrase), m_boolFeatured(false) { }
-  CArtistCredit(std::string strArtist, std::string strMusicBrainzArtistID, std::string strJoinPhrase)
-  : m_strArtist(strArtist), m_strMusicBrainzArtistID(strMusicBrainzArtistID), m_strJoinPhrase(strJoinPhrase), m_boolFeatured(false)  {  }
+  CArtistCredit(std::string strArtist) : m_strArtist(strArtist) { }
+  CArtistCredit(std::string strArtist, std::string strMusicBrainzArtistID)
+    : m_strArtist(strArtist), m_strMusicBrainzArtistID(strMusicBrainzArtistID) {  }
+
   bool operator<(const CArtistCredit& a) const
   {
-    if (m_strArtist < a.m_strArtist) return true;
-    if (m_strArtist > a.m_strArtist) return false;
+    if (m_strMusicBrainzArtistID.empty() && a.m_strMusicBrainzArtistID.empty())
+    {
+      if (m_strArtist < a.m_strArtist) return true;
+      if (m_strArtist > a.m_strArtist) return false;
+      return false;
+    }
+
     if (m_strMusicBrainzArtistID < a.m_strMusicBrainzArtistID) return true;
     if (m_strMusicBrainzArtistID > a.m_strMusicBrainzArtistID) return false;
     return false;
@@ -111,19 +132,53 @@ public:
 
   std::string GetArtist() const                { return m_strArtist; }
   std::string GetMusicBrainzArtistID() const   { return m_strMusicBrainzArtistID; }
-  std::string GetJoinPhrase() const            { return m_strJoinPhrase; }
+  int         GetArtistId() const              { return idArtist; }
   void SetArtist(const std::string &strArtist) { m_strArtist = strArtist; }
   void SetMusicBrainzArtistID(const std::string &strMusicBrainzArtistID) { m_strMusicBrainzArtistID = strMusicBrainzArtistID; }
-  void SetJoinPhrase(const std::string &strJoinPhrase) { m_strJoinPhrase = strJoinPhrase; }
+  void SetArtistId(int idArtist)               { this->idArtist = idArtist; }
 
 private:
   long idArtist;
   std::string m_strArtist;
   std::string m_strMusicBrainzArtistID;
-  std::string m_strJoinPhrase;
-  bool m_boolFeatured;
 };
 
 typedef std::vector<CArtist> VECARTISTS;
 typedef std::vector<CArtistCredit> VECARTISTCREDITS;
+
+const std::string BLANKARTIST_FAKEMUSICBRAINZID = "Artist Tag Missing";
+const std::string BLANKARTIST_NAME = "[Missing Tag]";
+const long BLANKARTIST_ID = 1;
+
+#define ROLE_ARTIST 1  //Default role
+
+class CMusicRole
+{
+public:
+  CMusicRole() { }
+  CMusicRole(std::string strRole, std::string strArtist) : idRole(-1), m_strRole(strRole), m_strArtist(strArtist), idArtist(-1) { }
+  CMusicRole(int role, std::string strRole, std::string strArtist, long ArtistId) : idRole(role), m_strRole(strRole), m_strArtist(strArtist), idArtist(ArtistId) { }
+  std::string GetArtist() const { return m_strArtist; }
+  std::string GetRoleDesc() const { return m_strRole; }
+  int GetRoleId() const { return idRole; }
+  long GetArtistId() const { return idArtist; }
+  void SetArtistId(long iArtistId) { idArtist = iArtistId;  }
+
+  bool operator==(const CMusicRole& a) const
+  {
+    if (StringUtils::EqualsNoCase(m_strRole, a.m_strRole))
+      return StringUtils::EqualsNoCase(m_strArtist, a.m_strArtist);
+    else
+      return false;
+  }
+private:
+  int idRole;
+  std::string m_strRole;
+  std::string m_strArtist;
+  long idArtist;
+};
+
+typedef std::vector<CMusicRole> VECMUSICROLES;
+
+
 

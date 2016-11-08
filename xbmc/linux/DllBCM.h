@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,6 +48,9 @@ public:
   virtual void bcm_host_init() = 0;
   virtual void bcm_host_deinit() = 0;
   virtual int32_t graphics_get_display_size( const uint16_t display_number, uint32_t *width, uint32_t *height) = 0;
+  virtual int vc_tv_power_off() = 0;
+  virtual int vc_tv_sdtv_power_on(SDTV_MODE_T mode, SDTV_OPTIONS_T *options) = 0;
+  virtual int vc_tv_hdmi_power_on_preferred() = 0;
   virtual int vc_tv_hdmi_power_on_best(uint32_t width, uint32_t height, uint32_t frame_rate,
                                        HDMI_INTERLACED_T scan_mode, EDID_MODE_MATCH_FLAG_T match_flags) = 0;
   virtual int vc_tv_hdmi_power_on_best_3d(uint32_t width, uint32_t height, uint32_t frame_rate,
@@ -92,6 +95,12 @@ public:
     { return ::bcm_host_deinit(); };
   virtual int32_t graphics_get_display_size( const uint16_t display_number, uint32_t *width, uint32_t *height)
     { return ::graphics_get_display_size(display_number, width, height); };
+  virtual int vc_tv_power_off()
+    { return ::vc_tv_power_off(); }
+  virtual int vc_tv_sdtv_power_on(SDTV_MODE_T mode, SDTV_OPTIONS_T *options)
+    { return ::vc_tv_sdtv_power_on(mode, options); }
+  virtual int vc_tv_hdmi_power_on_preferred()
+    { return ::vc_tv_hdmi_power_on_preferred(); }
   virtual int vc_tv_hdmi_power_on_best(uint32_t width, uint32_t height, uint32_t frame_rate,
                                        HDMI_INTERLACED_T scan_mode, EDID_MODE_MATCH_FLAG_T match_flags)
     { return ::vc_tv_hdmi_power_on_best(width, height, frame_rate, scan_mode, match_flags); };

@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,8 +20,8 @@
  */
 
 #include "GUIPassword.h"
-#include "utils/StdString.h"
 
+#include <string>
 #include <vector>
 
 class TiXmlNode;
@@ -34,13 +34,13 @@ public:
   class CLock
   {
   public:
-    CLock(LockType type = LOCK_MODE_EVERYONE, const CStdString &password = "");
+    CLock(LockType type = LOCK_MODE_EVERYONE, const std::string &password = "");
     void Validate();
 
     LockType mode;
-    CStdString code;
+    std::string code;
     bool addonManager;
-    bool settings;
+    LOCK_LEVEL::SETTINGS_LOCK settings;
     bool music;
     bool video;
     bool files;
@@ -48,18 +48,18 @@ public:
     bool programs;
   };
 
-  CProfile(const CStdString &directory = "", const CStdString &name = "", const int id = -1);
+  CProfile(const std::string &directory = "", const std::string &name = "", const int id = -1);
   ~CProfile(void);
   
   void Load(const TiXmlNode *node, int nextIdProfile);
   void Save(TiXmlNode *root) const;
 
-  const CStdString& getDate() const { return m_date;}
+  const std::string& getDate() const { return m_date;}
   const int getId() const { return m_id; }
-  const CStdString& getName() const { return m_name;}
-  const CStdString& getDirectory() const { return m_directory;}
-  const CStdString& getThumb() const { return m_thumb;}
-  const CStdString& getLockCode() const { return m_locks.code;}
+  const std::string& getName() const { return m_name;}
+  const std::string& getDirectory() const { return m_directory;}
+  const std::string& getThumb() const { return m_thumb;}
+  const std::string& getLockCode() const { return m_locks.code;}
   LockType getLockMode() const { return m_locks.mode; }
 
   bool hasDatabases() const { return m_bDatabases; }
@@ -67,7 +67,11 @@ public:
   bool hasSources() const { return m_bSources; }
   bool canWriteSources() const { return m_bCanWriteSources; }
   bool hasAddons() const { return m_bAddons; }
-  bool settingsLocked() const { return m_locks.settings; }
+  /**
+   \brief Returns wich settings levels are locked for the current profile
+   \sa LOCK_LEVEL::SETTINGS_LOCK
+   */
+  LOCK_LEVEL::SETTINGS_LOCK settingsLockLevel() const { return m_locks.settings; }
   bool addonmanagerLocked() const { return m_locks.addonManager; }
   bool musicLocked() const { return m_locks.music; }
   bool videoLocked() const { return m_locks.video; }
@@ -76,11 +80,11 @@ public:
   bool programsLocked() const { return m_locks.programs; }
   const CLock &GetLocks() const { return m_locks; }
 
-  void setName(const CStdString& name) {m_name = name;}
-  void setDirectory(const CStdString& directory) {m_directory = directory;}
-  void setDate(const CStdString& strDate) { m_date = strDate;}
+  void setName(const std::string& name) {m_name = name;}
+  void setDirectory(const std::string& directory) {m_directory = directory;}
+  void setDate(const std::string& strDate) { m_date = strDate;}
   void setDate();
-  void setThumb(const CStdString& thumb) {m_thumb = thumb;}
+  void setThumb(const std::string& thumb) {m_thumb = thumb;}
   void setDatabases(bool bHas) { m_bDatabases = bHas; }
   void setWriteDatabases(bool bCan) { m_bCanWrite = bCan; }
   void setSources(bool bHas) { m_bSources = bHas; }
@@ -88,11 +92,11 @@ public:
   void SetLocks(const CLock &locks);
 
 private:
-  CStdString m_directory;
+  std::string m_directory;
   int m_id;
-  CStdString m_name;
-  CStdString m_date;
-  CStdString m_thumb;
+  std::string m_name;
+  std::string m_date;
+  std::string m_thumb;
   bool m_bDatabases;
   bool m_bCanWrite;
   bool m_bSources;

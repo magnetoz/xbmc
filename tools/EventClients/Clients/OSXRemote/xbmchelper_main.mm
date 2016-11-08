@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <iterator>
+#include <sys/file.h>
 
 using namespace std;
 
@@ -21,7 +22,7 @@ bool g_verbose_mode = false;
 
 //
 const char* PROGNAME="XBMCHelper";
-const char* PROGVERS="0.7";
+const char* PROGVERS="0.8";
 
 void ParseOptions(int argc, char** argv);
 void ReadConfig();
@@ -47,7 +48,7 @@ static const char *options = "hs:umt:vxa:z:";
 void usage(void)
 {
   printf("%s (version %s)\n", PROGNAME, PROGVERS);
-  printf("   Sends Apple Remote events to XBMC.\n\n");
+  printf("   Sends Apple Remote events to Kodi.\n\n");
   printf("Usage: %s [OPTIONS...]\n\nOptions:\n", PROGNAME);
   printf("  -h, --help           print this help message and exit.\n");
   printf("  -s, --server <addr>  send events to the specified IP.\n");
@@ -55,8 +56,8 @@ void usage(void)
   printf("  -u, --universal      runs in Universal Remote mode.\n");
   printf("  -t, --timeout <ms>   timeout length for sequences (default: 500ms).\n");
   printf("  -m, --multiremote    runs in Multi-Remote mode (adds remote identifier as additional idenfier to buttons)\n");
-  printf("  -a, --appPath        path to XBMC.app (MenuPress launch support).\n");
-  printf("  -z, --appHome        path to XBMC.app/Content/Resources/XBMX \n");
+  printf("  -a, --appPath        path to Kodi.app (MenuPress launch support).\n");
+  printf("  -z, --appHome        path to Kodi.app/Content/Resources \n");
   printf("  -v, --verbose        prints lots of debugging information.\n");
 }
 
@@ -65,7 +66,7 @@ void ReadConfig()
 {
 	// Compute filename.
   std::string strFile = getenv("HOME");
-  strFile += "/Library/Application Support/XBMC/XBMCHelper.conf";
+  strFile += "/Library/Application Support/Kodi/XBMCHelper.conf";
   
 	// Open file.
   std::ifstream ifs(strFile.c_str());
@@ -109,6 +110,7 @@ void ReadConfig()
 //----------------------------------------------------------------------------
 void ParseOptions(int argc, char** argv)
 {
+  NSString *tmpStr = nil;
   int c, option_index = 0;
   //set the defaults
 	bool readExternal = false;
@@ -119,6 +121,7 @@ void ParseOptions(int argc, char** argv)
   g_app_home = "";
   g_universal_timeout = 0.5;
   g_verbose_mode = false;
+  NSLog(@"ParseOptions - force VerboseMode on");
   
   while ((c = getopt_long(argc, argv, options, long_options, &option_index)) != -1) 
 	{
@@ -129,30 +132,42 @@ void ParseOptions(int argc, char** argv)
         break;
       case 'v':
         g_verbose_mode = true;
+        NSLog(@"ParseOptions - VerboseMode on");
         break;
       case 's':
         g_server_address = optarg;
+        tmpStr = [NSString stringWithCString:g_server_address.c_str() encoding:NSASCIIStringEncoding];
+        NSLog(@"ParseOptions - server address %@", tmpStr);
         break;
       case 'p':
         g_server_port = atoi(optarg);
+        NSLog(@"ParseOptions - server port %i", g_server_port);
         break;
       case 'u':
         g_mode = UNIVERSAL_MODE;
+        NSLog(@"ParseOptions - UniversalMode on");
         break;
       case 'm':
         g_mode = MULTIREMOTE_MODE;
+        NSLog(@"ParseOptions - MultiRemoteMode on");
         break;        
       case 't':
         g_universal_timeout = atof(optarg) * 0.001;
+        NSLog(@"ParseOptions - Universal Timeout %lf", g_universal_timeout);
         break;
       case 'x':
         readExternal = true;
+        NSLog(@"ParseOptions - ReadExternal on");
         break;
       case 'a':
         g_app_path = optarg;
+        tmpStr = [NSString stringWithCString:g_app_path.c_str() encoding:NSASCIIStringEncoding];
+        NSLog(@"ParseOptions - AppPath %@", tmpStr);
         break;
       case 'z':
         g_app_home = optarg;
+        tmpStr = [NSString stringWithCString:g_app_home.c_str() encoding:NSASCIIStringEncoding];
+        NSLog(@"ParseOptions - AppHome %@", tmpStr);
         break;
       default:
         usage();
@@ -184,19 +199,30 @@ void ConfigureHelper(){
 //----------------------------------------------------------------------------
 void Reconfigure(int nSignal)
 {
-	if (nSignal == SIGHUP){
+    NSLog(@"received signal %i", nSignal);
+
+	if (nSignal == SIGHUP)
+    {
 		ReadConfig();
-    ConfigureHelper();
-  }
-	else {
-    QuitEventLoop(GetMainEventLoop());
-  }
+        ConfigureHelper();
+    }
+    else
+    {
+        QuitEventLoop(GetMainEventLoop());
+    }
 }
 
 //----------------------------------------------------------------------------
 int main (int argc,  char * argv[]) {
   NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
   
+  int instanceLockFile = open("/tmp/xbmchelper.lock", O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
+  if (flock(instanceLockFile, LOCK_EX | LOCK_NB) != 0)
+  {
+      NSLog(@"Already running - exiting ...");
+      return 0;
+  }
+    
   ParseOptions(argc,argv);
 
   NSLog(@"%s %s starting up...", PROGNAME, PROGVERS);

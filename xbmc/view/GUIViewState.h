@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
+#include <vector>
 
 #include "utils/LabelFormatter.h"
 #include "utils/SortUtils.h"
@@ -37,43 +39,45 @@ public:
   void SaveViewAsControl(int viewAsControl);
   int GetViewAsControl() const;
 
-  SORT_METHOD SetNextSortMethod(int direction = 1);
+  bool ChooseSortMethod();
+  SortDescription SetNextSortMethod(int direction = 1);
   void SetCurrentSortMethod(int method);
-  SORT_METHOD GetSortMethod() const;
+  SortDescription GetSortMethod() const;
+  bool HasMultipleSortMethods() const;
   int GetSortMethodLabel() const;
+  int GetSortOrderLabel() const;
   void GetSortMethodLabelMasks(LABEL_MASKS& masks) const;
-  void GetSortMethods(std::vector< std::pair<int,int> > &sortMethods) const;
 
   SortOrder SetNextSortOrder();
-  SortOrder GetSortOrder() const { return m_sortOrder; };
-  SortOrder GetDisplaySortOrder() const;
+  SortOrder GetSortOrder() const;
+
   virtual bool HideExtensions();
   virtual bool HideParentDirItems();
   virtual bool DisableAddSourceButtons();
+
   virtual int GetPlaylist();
-  const CStdString& GetPlaylistDirectory();
-  void SetPlaylistDirectory(const CStdString& strDirectory);
-  bool IsCurrentPlaylistDirectory(const CStdString& strDirectory);
+  const std::string& GetPlaylistDirectory();
+  void SetPlaylistDirectory(const std::string& strDirectory);
+  bool IsCurrentPlaylistDirectory(const std::string& strDirectory);
   virtual bool AutoPlayNextItem();
-  virtual CStdString GetLockType();
-  virtual CStdString GetExtensions();
+
+  virtual std::string GetLockType();
+  virtual std::string GetExtensions();
   virtual VECSOURCES& GetSources();
 
 protected:
   CGUIViewState(const CFileItemList& items);  // no direct object creation, use GetViewState()
-  virtual void SaveViewState()=0;
-  virtual void SaveViewToDb(const CStdString &path, int windowID, CViewState *viewState = NULL);
-  void LoadViewState(const CStdString &path, int windowID);
+
+  virtual void SaveViewState() = 0;
+  virtual void SaveViewToDb(const std::string &path, int windowID, CViewState *viewState = NULL);
+  void LoadViewState(const std::string &path, int windowID);
   
   /*! \brief Add the addons source for the given content type, if the user has suitable addons
    \param content the type of addon content desired
    \param label the name of the addons source
    \param thumb the skin image to use as the icon
    */
-  void AddAddonsSource(const CStdString &content, const CStdString &label, const CStdString& thumb);
-#if defined(TARGET_ANDROID)
-  void AddAndroidSource(const CStdString &content, const CStdString &label, const CStdString& thumb);
-#endif
+  void AddAddonsSource(const std::string &content, const std::string &label, const std::string& thumb);
   void AddLiveTVSources();
 
   /*! \brief Add the sort order defined in a smartplaylist
@@ -83,22 +87,23 @@ protected:
    */
   void AddPlaylistOrder(const CFileItemList &items, LABEL_MASKS label_masks);
 
-  void AddSortMethod(SORT_METHOD sortMethod, int buttonLabel, LABEL_MASKS labelmasks);
-  void SetSortMethod(SORT_METHOD sortMethod);
+  void AddSortMethod(SortBy sortBy, int buttonLabel, const LABEL_MASKS &labelMasks, SortAttribute sortAttributes = SortAttributeNone, SortOrder sortOrder = SortOrderNone);
+  void AddSortMethod(SortBy sortBy, SortAttribute sortAttributes, int buttonLabel, const LABEL_MASKS &labelMasks, SortOrder sortOrder = SortOrderNone);
+  void AddSortMethod(SortDescription sortDescription, int buttonLabel, const LABEL_MASKS &labelMasks);
+  void SetSortMethod(SortBy sortBy, SortOrder sortOrder = SortOrderNone);
+  void SetSortMethod(SortDescription sortDescription);
   void SetSortOrder(SortOrder sortOrder);
-  const CFileItemList& m_items;
 
-  static VECSOURCES m_sources;
+  const CFileItemList& m_items;
 
   int m_currentViewAsControl;
   int m_playlist;
 
-  std::vector<SORT_METHOD_DETAILS> m_sortMethods;
+  std::vector<GUIViewSortDetails> m_sortMethods;
   int m_currentSortMethod;
 
-  SortOrder m_sortOrder;
-
-  static CStdString m_strPlaylistDirectory;
+  static VECSOURCES m_sources;
+  static std::string m_strPlaylistDirectory;
 };
 
 class CGUIViewStateGeneral : public CGUIViewState
@@ -107,7 +112,7 @@ public:
   CGUIViewStateGeneral(const CFileItemList& items);
 
 protected:
-  virtual void SaveViewState() {};
+  virtual void SaveViewState() { }
 };
 
 class CGUIViewStateFromItems : public CGUIViewState

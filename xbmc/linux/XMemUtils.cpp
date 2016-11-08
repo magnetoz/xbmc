@@ -4,7 +4,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
  */
 
 #include "XMemUtils.h"
+#include "Util.h"
 
 #if defined(TARGET_DARWIN)
 #include <mach/mach.h>
@@ -52,9 +53,9 @@ void _aligned_free(void *p) {
   free(pFull);
 }
 
-#ifndef _WIN32
+#ifndef TARGET_WINDOWS
 
-#if defined(_LINUX) && !defined(TARGET_DARWIN) && !defined(__FreeBSD__)
+#if defined(TARGET_POSIX) && !defined(TARGET_DARWIN) && !defined(TARGET_FREEBSD)
 static FILE* procMeminfoFP = NULL;
 #endif
 
@@ -70,7 +71,7 @@ void GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
   uint64_t physmem;
   size_t len = sizeof physmem;
   int mib[2] = { CTL_HW, HW_MEMSIZE };
-  size_t miblen = sizeof(mib) / sizeof(mib[0]);
+  size_t miblen = ARRAY_SIZE(mib);
 
   // Total physical memory.
   if (sysctl(mib, miblen, &physmem, &len, NULL, 0) == 0 && len == sizeof (physmem))
@@ -93,10 +94,19 @@ void GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
   if (host_statistics(stat_port, HOST_VM_INFO, (host_info_t)&vm_stat, &count) == 0)
   {
       // Find page size.
+#if defined(TARGET_DARWIN_IOS)
+      // on ios with 64bit ARM CPU the page size is wrongly given as 16K
+      // when using the sysctl approach. We can use the host_page_size
+      // function instead which will give the proper 4k pagesize
+      // on both 32 and 64 bit ARM CPUs
+      vm_size_t pageSize;
+      host_page_size(stat_port, &pageSize);
+#else
       int pageSize;
       mib[0] = CTL_HW; mib[1] = HW_PAGESIZE;
       len = sizeof(int);
       if (sysctl(mib, miblen, &pageSize, &len, NULL, 0) == 0)
+#endif
       {
           uint64_t used = (vm_stat.active_count + vm_stat.inactive_count + vm_stat.wire_count) * pageSize;
 
@@ -104,7 +114,7 @@ void GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
           lpBuffer->ullAvailVirtual  = lpBuffer->ullAvailPhys; // FIXME.
       }
   }
-#elif defined(__FreeBSD__)
+#elif defined(TARGET_FREEBSD)
   /* sysctl hw.physmem */
   size_t physmem = 0, mem_free = 0, pagesize = 0, swap_free = 0;
   size_t mem_avail = 0, mem_inactive = 0, mem_cache = 0, len = 0;

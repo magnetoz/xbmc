@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2012-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,12 +13,13 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "utils/POUtils.h"
+#include "URL.h"
 #include "filesystem/File.h"
 #include "utils/log.h"
 #include <stdlib.h>
@@ -36,32 +37,21 @@ CPODocument::~CPODocument() {}
 
 bool CPODocument::LoadFile(const std::string &pofilename)
 {
+  CURL poFileUrl(pofilename);
+  if (!XFILE::CFile::Exists(poFileUrl))
+    return false;
+
   XFILE::CFile file;
-  if (!file.Open(pofilename))
-    return false;
-
-  int64_t fileLength = file.GetLength();
-  if (fileLength < 18) // at least a size of a minimalistic header
+  XFILE::auto_buffer buf;
+  if (file.LoadFile(poFileUrl, buf) < 18) // at least a size of a minimalistic header
   {
-    file.Close();
-    CLog::Log(LOGERROR, "POParser: non valid length found for string file: %s", pofilename.c_str());
+    CLog::Log(LOGERROR, "%s: can't load file \"%s\" or file is too small", __FUNCTION__,  pofilename.c_str());
     return false;
   }
-
-  m_POfilelength = static_cast<size_t> (fileLength);
-
-  m_strBuffer.resize(m_POfilelength+1);
-  m_strBuffer[0] = '\n';
-
-  unsigned int readBytes = file.Read(&m_strBuffer[1], m_POfilelength);
-  file.Close();
-
-  if (readBytes != m_POfilelength)
-  {
-    CLog::Log(LOGERROR, "POParser: actual read data differs from file size, for string file: %s",
-              pofilename.c_str());
-    return false;
-  }
+  
+  m_strBuffer = '\n';
+  m_strBuffer.append(buf.get(), buf.size());
+  buf.clear();
 
   ConvertLineEnds(pofilename);
 
@@ -173,7 +163,7 @@ void CPODocument::ParseEntry(bool bisSourceLang)
       break;
   }
 
-  if (m_Entry.msgStrPlural.size() == 0)
+  if (m_Entry.msgStrPlural.empty())
   {
     CLog::Log(LOGERROR, "POParser: msgstr[] plural lines have zero valid strings. "
                         "Failed entry: %s", m_Entry.Content.c_str());
@@ -312,7 +302,7 @@ void CPODocument::ConvertLineEnds(const std::string &filename)
 
   std::string strTemp;
   strTemp.reserve(m_strBuffer.size());
-  for (std::string::const_iterator it = m_strBuffer.begin(); it < m_strBuffer.end(); it++)
+  for (std::string::const_iterator it = m_strBuffer.begin(); it < m_strBuffer.end(); ++it)
   {
     if (*it == '\r')
     {

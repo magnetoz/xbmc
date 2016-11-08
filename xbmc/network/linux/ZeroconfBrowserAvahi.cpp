@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,12 +47,12 @@ private:
 };
 }
 
-CZeroconfBrowserAvahi::CZeroconfBrowserAvahi() : mp_client ( 0 ), mp_poll ( 0 ), m_shutdown(false), m_thread_id(0)
+CZeroconfBrowserAvahi::CZeroconfBrowserAvahi() : mp_client ( 0 ), mp_poll ( 0 )
 {
   if ( ! ( mp_poll = avahi_threaded_poll_new() ) )
   {
     CLog::Log ( LOGERROR, "CZeroconfAvahi::CZeroconfAvahi(): Could not create threaded poll object" );
-    //TODO: throw exception? can this even happen?
+    //! @todo throw exception? can this even happen?
     return;
   }
 
@@ -74,27 +74,8 @@ CZeroconfBrowserAvahi::~CZeroconfBrowserAvahi()
   CLog::Log ( LOGDEBUG, "CZeroconfAvahi::~CZeroconfAvahi() Going down! cleaning up..." );
   if ( mp_poll )
   {
-    //normally we would stop the avahi thread here and do our work, but
-    //it looks like this does not work -> www.avahi.org/ticket/251
-    //so instead of calling
-    //avahi_threaded_poll_stop(mp_poll);
-    //we set m_shutdown=true, post an event and wait for it to stop itself
-    struct timeval tv = { 0, 0 }; //TODO: does tv survive the thread?
-    AvahiTimeout* lp_timeout;
-    {
-      ScopedEventLoopBlock l_block(mp_poll);
-      const AvahiPoll* cp_apoll = avahi_threaded_poll_get(mp_poll);
-      m_shutdown = true;
-      lp_timeout = cp_apoll->timeout_new(cp_apoll,
-                                         &tv,
-                                         shutdownCallback,
-                                         this);
-    }
-
-    //now wait for the thread to stop
-    assert(m_thread_id);
-    pthread_join(m_thread_id, NULL);
-    avahi_threaded_poll_get(mp_poll)->timeout_free(lp_timeout);
+    //stop avahi polling thread
+    avahi_threaded_poll_stop(mp_poll);
   }
   //free the client (frees all browsers, groups, ...)
   if ( mp_client )
@@ -103,7 +84,7 @@ CZeroconfBrowserAvahi::~CZeroconfBrowserAvahi()
     avahi_threaded_poll_free ( mp_poll );
 }
 
-bool CZeroconfBrowserAvahi::doAddServiceType ( const CStdString& fcr_service_type )
+bool CZeroconfBrowserAvahi::doAddServiceType ( const std::string& fcr_service_type )
 {
   ScopedEventLoopBlock lock ( mp_poll );
   tBrowserMap::iterator it = m_browsers.find ( fcr_service_type );
@@ -134,7 +115,7 @@ bool CZeroconfBrowserAvahi::doAddServiceType ( const CStdString& fcr_service_typ
   }
 }
 
-bool CZeroconfBrowserAvahi::doRemoveServiceType ( const CStdString& fcr_service_type )
+bool CZeroconfBrowserAvahi::doRemoveServiceType ( const std::string& fcr_service_type )
 {
   ScopedEventLoopBlock lock ( mp_poll );
   tBrowserMap::iterator it = m_browsers.find ( fcr_service_type );
@@ -149,9 +130,13 @@ bool CZeroconfBrowserAvahi::doRemoveServiceType ( const CStdString& fcr_service_
     }
     m_browsers.erase ( it );
     //remove this serviceType from the list of discovered services
-    for ( tDiscoveredServices::iterator it = m_discovered_services.begin(); it != m_discovered_services.end(); ++it )
-      if ( it->first.GetType() == fcr_service_type )
-        m_discovered_services.erase ( it++ );
+    for (auto itr = m_discovered_services.begin(); itr != m_discovered_services.end();)
+    {
+      if (itr->first.GetType() == fcr_service_type)
+        itr = m_discovered_services.erase(itr);
+      else
+        ++itr;
+    }
   }
   return true;
 }
@@ -203,15 +188,6 @@ bool CZeroconfBrowserAvahi::doResolveService ( CZeroconfBrowser::ZeroconfService
 void CZeroconfBrowserAvahi::clientCallback ( AvahiClient* fp_client, AvahiClientState f_state, void* fp_data )
 {
   CZeroconfBrowserAvahi* p_instance = static_cast<CZeroconfBrowserAvahi*> ( fp_data );
-
-  //store our thread ID and check for shutdown -> check details in destructor
-  p_instance->m_thread_id = pthread_self();
-  if (p_instance->m_shutdown)
-  {
-    avahi_threaded_poll_quit(p_instance->mp_poll);
-    return;
-  }
-
   switch ( f_state )
   {
     case AVAHI_CLIENT_S_RUNNING:
@@ -265,7 +241,7 @@ void CZeroconfBrowserAvahi::browseCallback (
   {
     case AVAHI_BROWSER_FAILURE:
       CLog::Log ( LOGERROR, "CZeroconfBrowserAvahi::browseCallback error: %s\n", avahi_strerror ( avahi_client_errno ( avahi_service_browser_get_client ( browser ) ) ) );
-      //TODO
+      //! @todo implement
       return;
     case AVAHI_BROWSER_NEW:
       {
@@ -327,8 +303,8 @@ CZeroconfBrowser::ZeroconfService::tTxtRecordMap GetTxtRecords(AvahiStringList *
 
     recordMap.insert(
       std::make_pair(
-        CStdString(key),
-        CStdString(value)
+        std::string(key),
+        std::string(value)
       )
     );
     
@@ -387,7 +363,7 @@ bool CZeroconfBrowserAvahi::createClient()
   return true;
 }
 
-AvahiServiceBrowser* CZeroconfBrowserAvahi::createServiceBrowser ( const CStdString& fcr_service_type, AvahiClient* fp_client, void* fp_userdata)
+AvahiServiceBrowser* CZeroconfBrowserAvahi::createServiceBrowser ( const std::string& fcr_service_type, AvahiClient* fp_client, void* fp_userdata)
 {
   assert(fp_client);
   AvahiServiceBrowser* ret = avahi_service_browser_new ( fp_client, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, fcr_service_type.c_str(),
@@ -398,17 +374,6 @@ AvahiServiceBrowser* CZeroconfBrowserAvahi::createServiceBrowser ( const CStdStr
                 avahi_strerror ( avahi_client_errno ( fp_client ) ), fcr_service_type.c_str() );
   }
   return ret;
-}
-
-
-void CZeroconfBrowserAvahi::shutdownCallback(AvahiTimeout *fp_e, void *fp_data)
-{
-  CZeroconfBrowserAvahi* p_instance = static_cast<CZeroconfBrowserAvahi*>(fp_data);
-  //should only be called on shutdown
-  if (p_instance->m_shutdown)
-  {
-    avahi_threaded_poll_quit(p_instance->mp_poll);
-  }
 }
 
 #endif //HAS_AVAHI

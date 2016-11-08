@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,22 +39,20 @@ CSourcesDirectory::~CSourcesDirectory(void)
 {
 }
 
-bool CSourcesDirectory::GetDirectory(const CStdString& strPath, CFileItemList &items)
+bool CSourcesDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 {
   // break up our path
   // format is:  sources://<type>/
-  CURL url(strPath);
-  CStdString type(url.GetFileName());
+  std::string type(url.GetFileName());
   URIUtils::RemoveSlashAtEnd(type);
 
   VECSOURCES sources;
-  VECSOURCES *sourcesFromType = CMediaSourceSettings::Get().GetSources(type);
-  if (sourcesFromType)
-    sources = *sourcesFromType;
-  g_mediaManager.GetRemovableDrives(sources);
-
+  VECSOURCES *sourcesFromType = CMediaSourceSettings::GetInstance().GetSources(type);
   if (!sourcesFromType)
     return false;
+
+  sources = *sourcesFromType;
+  g_mediaManager.GetRemovableDrives(sources);
 
   return GetDirectory(sources, items);
 }
@@ -65,34 +63,34 @@ bool CSourcesDirectory::GetDirectory(const VECSOURCES &sources, CFileItemList &i
   {
     const CMediaSource& share = sources[i];
     CFileItemPtr pItem(new CFileItem(share));
-    if (pItem->GetPath().Left(14).Equals("musicsearch://"))
+    if (URIUtils::IsProtocol(pItem->GetPath(), "musicsearch"))
       pItem->SetCanQueue(false);
     
-    CStdString strIcon;
+    std::string strIcon;
     // We have the real DVD-ROM, set icon on disktype
-    if (share.m_iDriveType == CMediaSource::SOURCE_TYPE_DVD && share.m_strThumbnailImage.IsEmpty())
+    if (share.m_iDriveType == CMediaSource::SOURCE_TYPE_DVD && share.m_strThumbnailImage.empty())
     {
       CUtil::GetDVDDriveIcon( pItem->GetPath(), strIcon );
       // CDetectDVDMedia::SetNewDVDShareUrl() caches disc thumb as special://temp/dvdicon.tbn
-      CStdString strThumb = "special://temp/dvdicon.tbn";
+      std::string strThumb = "special://temp/dvdicon.tbn";
       if (XFILE::CFile::Exists(strThumb))
         pItem->SetArt("thumb", strThumb);
     }
-    else if (pItem->GetPath().Left(9) == "addons://")
+    else if (URIUtils::IsProtocol(pItem->GetPath(), "addons"))
       strIcon = "DefaultHardDisk.png";
     else if (   pItem->IsVideoDb()
              || pItem->IsMusicDb()
              || pItem->IsPlugin()
-             || pItem->GetPath() == "special://musicplaylists/"
-             || pItem->GetPath() == "special://videoplaylists/"
-             || pItem->GetPath() == "musicsearch://")
+             || pItem->IsPath("special://musicplaylists/")
+             || pItem->IsPath("special://videoplaylists/")
+             || pItem->IsPath("musicsearch://"))
       strIcon = "DefaultFolder.png";
     else if (pItem->IsRemote())
       strIcon = "DefaultNetwork.png";
     else if (pItem->IsISO9660())
       strIcon = "DefaultDVDRom.png";
     else if (pItem->IsDVD())
-      strIcon = "DefaultDVDRom.png";
+      strIcon = "DefaultDVDFull.png";
     else if (pItem->IsCDDA())
       strIcon = "DefaultCDDA.png";
     else if (pItem->IsRemovable() && g_TextureManager.HasTexture("DefaultRemovableDisk.png"))
@@ -101,7 +99,7 @@ bool CSourcesDirectory::GetDirectory(const VECSOURCES &sources, CFileItemList &i
       strIcon = "DefaultHardDisk.png";
     
     pItem->SetIconImage(strIcon);
-    if (share.m_iHasLock == 2 && CProfilesManager::Get().GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE)
+    if (share.m_iHasLock == 2 && CProfilesManager::GetInstance().GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE)
       pItem->SetOverlayImage(CGUIListItem::ICON_OVERLAY_LOCKED);
     else
       pItem->SetOverlayImage(CGUIListItem::ICON_OVERLAY_NONE);
@@ -111,7 +109,7 @@ bool CSourcesDirectory::GetDirectory(const VECSOURCES &sources, CFileItemList &i
   return true;
 }
 
-bool CSourcesDirectory::Exists(const char* strPath)
+bool CSourcesDirectory::Exists(const CURL& url)
 {
   return true;
 }

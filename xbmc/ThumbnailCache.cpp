@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,18 +23,7 @@
 #include "threads/SingleLock.h"
 
 #include "FileItem.h"
-#include "video/VideoInfoTag.h"
-#include "video/VideoDatabase.h"
-#include "music/tags/MusicInfoTag.h"
-#include "music/Album.h"
-#include "music/Artist.h"
-#include "utils/URIUtils.h"
-#include "utils/Crc32.h"
-#include "utils/StringUtils.h"
-#include "filesystem/StackDirectory.h"
-#include "settings/AdvancedSettings.h"
 
-using namespace std;
 using namespace XFILE;
 using namespace MUSIC_INFO;
 

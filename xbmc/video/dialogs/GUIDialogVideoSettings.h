@@ -1,8 +1,8 @@
 #pragma once
 
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2014 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,20 +20,35 @@
  *
  */
 
-#include "settings/dialogs/GUIDialogSettings.h"
+#include <string>
+#include <utility>
+#include <vector>
 
-class CGUIDialogVideoSettings :
-      public CGUIDialogSettings
+#include "settings/dialogs/GUIDialogSettingsManualBase.h"
+
+class CGUIDialogVideoSettings : public CGUIDialogSettingsManualBase
 {
 public:
-  CGUIDialogVideoSettings(void);
-  virtual ~CGUIDialogVideoSettings(void);
-
-  static CStdString FormatInteger(float value, float minimum);
-  static CStdString FormatFloat(float value, float minimum);
+  CGUIDialogVideoSettings();
+  virtual ~CGUIDialogVideoSettings();
 
 protected:
-  virtual void CreateSettings();
-  virtual void OnSettingChanged(SettingInfo &setting);
-};
+  // implementations of ISettingCallback
+  virtual void OnSettingChanged(const CSetting *setting);
+  virtual void OnSettingAction(const CSetting *setting);
 
+  void AddVideoStreams(CSettingGroup *group, const std::string & settingId);
+  static void VideoStreamsOptionFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current, void *data);
+
+  // specialization of CGUIDialogSettingsBase
+  virtual bool AllowResettingSettings() const { return false; }
+  virtual void Save();
+  virtual void SetupView();
+
+  // specialization of CGUIDialogSettingsManualBase
+  virtual void InitializeSettings();
+
+private:
+  int m_videoStream;
+  bool m_viewModeChanged;
+};

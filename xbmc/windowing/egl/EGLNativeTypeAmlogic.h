@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,9 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
+#include <string>
+#include <vector>
 
 #include "EGLNativeType.h"
 class CEGLNativeTypeAmlogic : public CEGLNativeType
@@ -48,14 +51,13 @@ public:
   virtual bool  ShowWindow(bool show);
 
 protected:
-  int get_sysfs_str(const char *path, char *valstr, const int size) const;
-  int set_sysfs_str(const char *path, const char *val) const;
-  int set_sysfs_int(const char *path, const int val) const;
-  int get_sysfs_int(const char *path) const;
-
   bool SetDisplayResolution(const char *resolution);
-  bool ModeToResolution(const char *mode, RESOLUTION_INFO *res) const;
-  void EnableFreeScale();
+  void SetupVideoScaling(const char *mode);
   void DisableFreeScale();
-  void SetCpuMinLimit(bool limit);
+
+private:
+  void SetFramebufferResolution(const RESOLUTION_INFO &res) const;
+  void SetFramebufferResolution(int width, int height) const;
+
+  std::string m_framebuffer_name;
 };

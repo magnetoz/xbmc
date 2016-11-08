@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2010-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -82,8 +81,9 @@ half3 line (float ypos, vec4 xpos, half4 linetaps)
     pixel(xpos.a, ypos) * linetaps.a;
 }
 
-void main()
+vec4 process()
 {
+  vec4 rgb;
   vec2 pos = stretch(cord) + stepxy * 0.5;
   vec2 f = fract(pos / stepxy);
 
@@ -97,12 +97,13 @@ void main()
   vec2 xystart = (-1.5 - f) * stepxy + pos;
   vec4 xpos = vec4(xystart.x, xystart.x + stepxy.x, xystart.x + stepxy.x * 2.0, xystart.x + stepxy.x * 3.0);
 
-  gl_FragColor.rgb =
+  rgb.rgb =
     line(xystart.y                 , xpos, linetaps) * columntaps.r +
     line(xystart.y + stepxy.y      , xpos, linetaps) * columntaps.g +
     line(xystart.y + stepxy.y * 2.0, xpos, linetaps) * columntaps.b +
     line(xystart.y + stepxy.y * 3.0, xpos, linetaps) * columntaps.a;
 
-  gl_FragColor.a = gl_Color.a;
+  rgb.a = gl_Color.a;
+  return rgb;
 }
 

@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -40,12 +40,13 @@ public:
   virtual CFileItemPtr GetCurrentListItem(int offset = 0);
 protected:
   virtual void OnInitWindow();
-  bool DownloadThumbnail(const CStdString &thumbFile);
+  bool DownloadThumbnail(const std::string &thumbFile);
   void OnGetThumb();
-  void SetRating(char rating);
+  void SetUserrating(int userrating);
+  void OnSetUserrating();
 
   CFileItemPtr m_song;
-  char m_startRating;
+  int m_startUserrating;
   bool m_cancelled;
   bool m_needsUpdate;
   long m_albumId;

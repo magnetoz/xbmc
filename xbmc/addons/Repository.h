@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,57 +19,70 @@
  *
  */
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "Addon.h"
-#include "AddonManager.h"
-#include "XBDateTime.h"
 #include "utils/Job.h"
-#include "threads/CriticalSection.h"
-#include "threads/SingleLock.h"
+#include "utils/ProgressJob.h"
 
 namespace ADDON
 {
-  class CRepository;
-  typedef boost::shared_ptr<CRepository> RepositoryPtr;
   class CRepository : public CAddon
   {
   public:
-    AddonPtr Clone(const AddonPtr &self) const;
-    CRepository(const AddonProps& props);
-    CRepository(const cp_extension_t *props);
-    virtual ~CRepository();
+    struct DirInfo
+    {
+      DirInfo() : version("0.0.0"), hashes(false) {}
+      AddonVersion version;
+      std::string info;
+      std::string checksum;
+      std::string datadir;
+      bool hashes;
+    };
 
-    CStdString Checksum();
+    typedef std::vector<DirInfo> DirList;
+
+    static std::unique_ptr<CRepository> FromExtension(AddonProps props, const cp_extension_t* ext);
+
+    explicit CRepository(AddonProps props) : CAddon(std::move(props)) {};
+    CRepository(AddonProps props, DirList dirs);
 
     /*! \brief Get the md5 hash for an addon.
      \param the addon in question.
-     \return the md5 hash for the given addon, empty if non exists.
      */
-    CStdString GetAddonHash(const AddonPtr& addon);
-    VECADDONS Parse();
+    bool GetAddonHash(const AddonPtr& addon, std::string& checksum) const;
+
+    enum FetchStatus
+    {
+      STATUS_OK,
+      STATUS_NOT_MODIFIED,
+      STATUS_ERROR
+    };
+
+    FetchStatus FetchIfChanged(const std::string& oldChecksum, std::string& checksum, VECADDONS& addons) const;
+
   private:
-    CStdString FetchChecksum(const CStdString& url);
-    CRepository(const CRepository&, const AddonPtr&);
-    CStdString m_info;
-    CStdString m_checksum;
-    CStdString m_datadir;
-    bool m_compressed; // gzipped info xml
-    bool m_zipped;     // zipped addons
-    bool m_hashes;     // repo supports hashes. e.g. plugin.i.rule-1.0.5.zip.md5
-    CCriticalSection m_critSection;
+    static bool FetchChecksum(const std::string& url, std::string& checksum) noexcept;
+    static bool FetchIndex(const DirInfo& repo, VECADDONS& addons) noexcept;
+
+    DirList m_dirs;
   };
 
-  class CRepositoryUpdateJob : public CJob
+  typedef std::shared_ptr<CRepository> RepositoryPtr;
+
+
+  class CRepositoryUpdateJob : public CProgressJob
   {
   public:
-    CRepositoryUpdateJob(const VECADDONS& repos);
+    CRepositoryUpdateJob(const RepositoryPtr& repo);
     virtual ~CRepositoryUpdateJob() {}
-
-    virtual const char *GetType() const { return "repoupdate"; };
     virtual bool DoWork();
-  private:
-    VECADDONS GrabAddons(RepositoryPtr& repo);
+    const RepositoryPtr& GetAddon() const { return m_repo; };
 
-    VECADDONS m_repos;
+  private:
+    const RepositoryPtr m_repo;
   };
 }
 

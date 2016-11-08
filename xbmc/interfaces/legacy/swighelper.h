@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -97,5 +96,17 @@
 #define SWIG_CONSTANT2(type,var,val) %constant type var = val
 #else
 #define SWIG_CONSTANT2(type,var,val)
+#endif
+
+/**
+* SWIG_IMMUTABLE defines a member as immutable i.e. read-only.
+*
+* Note, this declaration is invisible to the API C++ code and can
+*  only be seen by the SWIG processor.
+*/
+#ifdef SWIG
+#define SWIG_IMMUTABLE(var) %feature("immutable"); var; %feature("immutable", "")
+#else
+#define SWIG_IMMUTABLE(var) var
 #endif
 

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,20 +22,20 @@
 #include "GUIWindowSettingsScreenCalibration.h"
 #include "guilib/GUIMoverControl.h"
 #include "guilib/GUIResizeControl.h"
-#ifdef HAS_VIDEO_PLAYBACK
-#include "cores/VideoRenderers/RenderManager.h"
-#endif
 #include "Application.h"
 #include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "guilib/GUIWindowManager.h"
 #include "dialogs/GUIDialogYesNo.h"
-#include "guilib/Key.h"
+#include "input/Key.h"
 #include "guilib/LocalizeStrings.h"
 #include "utils/log.h"
+#include "utils/StringUtils.h"
+#include "utils/Variant.h"
 #include "windowing/WindowingFactory.h"
 
-using namespace std;
+#include <string>
+#include <utility>
 
 #define CONTROL_LABEL_ROW1  2
 #define CONTROL_LABEL_ROW2  3
@@ -49,6 +49,9 @@ using namespace std;
 CGUIWindowSettingsScreenCalibration::CGUIWindowSettingsScreenCalibration(void)
     : CGUIWindow(WINDOW_SCREEN_CALIBRATION, "SettingsScreenCalibration.xml")
 {
+  m_iCurRes = 0;
+  m_iControl = 0;
+  m_fPixelRatioBoxHeight = 0.0f;
   m_needsScaling = false;         // we handle all the scaling
 }
 
@@ -70,14 +73,13 @@ bool CGUIWindowSettingsScreenCalibration::OnAction(const CAction &action)
   case ACTION_CALIBRATE_RESET:
     {
       CGUIDialogYesNo* pDialog = (CGUIDialogYesNo*)g_windowManager.GetWindow(WINDOW_DIALOG_YES_NO);
-      pDialog->SetHeading(20325);
-      CStdString strText;
-      strText.Format(g_localizeStrings.Get(20326).c_str(), CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).strMode.c_str());
-      pDialog->SetLine(0, strText);
-      pDialog->SetLine(1, 20327);
-      pDialog->SetChoice(0, 222);
-      pDialog->SetChoice(1, 186);
-      pDialog->DoModal();
+      pDialog->SetHeading(CVariant{20325});
+      std::string strText = StringUtils::Format(g_localizeStrings.Get(20326).c_str(), g_graphicsContext.GetResInfo(m_Res[m_iCurRes]).strMode.c_str());
+      pDialog->SetLine(0, CVariant{std::move(strText)});
+      pDialog->SetLine(1, CVariant{20327});
+      pDialog->SetChoice(0, CVariant{222});
+      pDialog->SetChoice(1, CVariant{186});
+      pDialog->Open();
       if (pDialog->IsConfirmed())
       {
         g_graphicsContext.ResetScreenParameters(m_Res[m_iCurRes]);
@@ -96,7 +98,24 @@ bool CGUIWindowSettingsScreenCalibration::OnAction(const CAction &action)
       return true;
     }
     break;
+  // ignore all gesture meta actions
+  case ACTION_GESTURE_BEGIN:
+  case ACTION_GESTURE_END:
+  case ACTION_GESTURE_NOTIFY:
+  case ACTION_GESTURE_PAN:
+  case ACTION_GESTURE_ROTATE:
+  case ACTION_GESTURE_ZOOM:
+    return true;
   }
+
+  // if we see a mouse move event without dx and dy (amount2 and amount3) these
+  // are the focus actions which are generated on touch events and those should
+  // be eaten/ignored here. Else we will switch to the screencalibration controls
+  // which are at that x/y value on each touch/tap/swipe which makes the whole window
+  // unusable for touch screens
+  if (action.GetID() == ACTION_MOUSE_MOVE && action.GetAmount(2) == 0 && action.GetAmount(3) == 0)
+    return true;
+
   return CGUIWindow::OnAction(action); // base class to handle basic movement etc.
 }
 
@@ -117,16 +136,11 @@ bool CGUIWindowSettingsScreenCalibration::OnMessage(CGUIMessage& message)
   {
   case GUI_MSG_WINDOW_DEINIT:
     {
-      CDisplaySettings::Get().UpdateCalibrations();
-      CSettings::Get().Save();
+      CDisplaySettings::GetInstance().UpdateCalibrations();
+      CSettings::GetInstance().Save();
       g_graphicsContext.SetCalibrating(false);
-      g_windowManager.ShowOverlay(OVERLAY_STATE_SHOWN);
       // reset our screen resolution to what it was initially
-      g_graphicsContext.SetVideoResolution(CDisplaySettings::Get().GetCurrentResolution());
-      // Inform the player so we can update the resolution
-#ifdef HAS_VIDEO_PLAYBACK
-      g_renderManager.Update(false);
-#endif
+      g_graphicsContext.SetVideoResolution(CDisplaySettings::GetInstance().GetCurrentResolution());
       g_windowManager.SendMessage(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_WINDOW_RESIZE);
     }
     break;
@@ -134,20 +148,14 @@ bool CGUIWindowSettingsScreenCalibration::OnMessage(CGUIMessage& message)
   case GUI_MSG_WINDOW_INIT:
     {
       CGUIWindow::OnMessage(message);
-      g_windowManager.ShowOverlay(OVERLAY_STATE_HIDDEN);
       g_graphicsContext.SetCalibrating(true);
 
       // Get the allowable resolutions that we can calibrate...
       m_Res.clear();
-      if (g_application.IsPlayingVideo())
+      if (g_application.m_pPlayer->IsPlayingVideo())
       { // don't allow resolution switching if we are playing a video
 
-#ifdef HAS_VIDEO_PLAYBACK
-        RESOLUTION res = g_renderManager.GetResolution();
-        g_graphicsContext.SetVideoResolution(res);
-        // Inform the renderer so we can update the resolution
-        g_renderManager.Update(false);
-#endif
+        g_application.m_pPlayer->TriggerUpdateResolution();
 
         m_iCurRes = 0;
         m_Res.push_back(g_graphicsContext.GetVideoResolution());
@@ -188,6 +196,13 @@ bool CGUIWindowSettingsScreenCalibration::OnMessage(CGUIMessage& message)
       }
     }
     break;
+  // send before touch for requesting gesture features - we don't want this
+  // it would result in unfocus in the onmessage below ...
+  case GUI_MSG_GESTURE_NOTIFY:
+  // send after touch for unfocussing - we don't want this in this window!
+  case GUI_MSG_UNFOCUS_ALL:
+    return true;
+    break;
   }
   return CGUIWindow::OnMessage(message);
 }
@@ -216,7 +231,7 @@ unsigned int CGUIWindowSettingsScreenCalibration::FindCurrentResolution()
 
 void CGUIWindowSettingsScreenCalibration::NextControl()
 { // set the old control invisible and not focused, and choose the next control
-  CGUIControl *pControl = (CGUIControl *)GetControl(m_iControl);
+  CGUIControl *pControl = GetControl(m_iControl);
   if (pControl)
   {
     pControl->SetVisible(false);
@@ -246,50 +261,51 @@ void CGUIWindowSettingsScreenCalibration::ResetControls()
   // disable the UI calibration for our controls
   // and set their limits
   // also, set them to invisible if they don't have focus
-  CGUIMoverControl *pControl = (CGUIMoverControl*)GetControl(CONTROL_TOP_LEFT);
+  CGUIMoverControl *pControl = dynamic_cast<CGUIMoverControl*>(GetControl(CONTROL_TOP_LEFT));
+  RESOLUTION_INFO info = g_graphicsContext.GetResInfo(m_Res[m_iCurRes]);
   if (pControl)
   {
-    pControl->SetLimits( -CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth / 4,
-                         -CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight / 4,
-                         CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth / 4,
-                         CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight / 4);
-    pControl->SetPosition((float)CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.left,
-                          (float)CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.top);
-    pControl->SetLocation(CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.left,
-                          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.top, false);
+    pControl->SetLimits( -info.iWidth / 4,
+                         -info.iHeight / 4,
+                         info.iWidth / 4,
+                         info.iHeight / 4);
+    pControl->SetPosition((float)info.Overscan.left,
+                          (float)info.Overscan.top);
+    pControl->SetLocation(info.Overscan.left,
+                          info.Overscan.top, false);
   }
-  pControl = (CGUIMoverControl*)GetControl(CONTROL_BOTTOM_RIGHT);
+  pControl = dynamic_cast<CGUIMoverControl*>(GetControl(CONTROL_BOTTOM_RIGHT));
   if (pControl)
   {
-    pControl->SetLimits(CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth*3 / 4,
-                        CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*3 / 4,
-                        CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth*5 / 4,
-                        CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*5 / 4);
-    pControl->SetPosition((float)CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.right - (int)pControl->GetWidth(),
-                          (float)CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.bottom - (int)pControl->GetHeight());
-    pControl->SetLocation(CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.right,
-                          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.bottom, false);
+    pControl->SetLimits(info.iWidth*3 / 4,
+                        info.iHeight*3 / 4,
+                        info.iWidth*5 / 4,
+                        info.iHeight*5 / 4);
+    pControl->SetPosition((float)info.Overscan.right - (int)pControl->GetWidth(),
+                          (float)info.Overscan.bottom - (int)pControl->GetHeight());
+    pControl->SetLocation(info.Overscan.right,
+                          info.Overscan.bottom, false);
   }
   // Subtitles and OSD controls can only move up and down
-  pControl = (CGUIMoverControl*)GetControl(CONTROL_SUBTITLES);
+  pControl = dynamic_cast<CGUIMoverControl*>(GetControl(CONTROL_SUBTITLES));
   if (pControl)
   {
-    pControl->SetLimits(0, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*3 / 4,
-                        0, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*5 / 4);
-    pControl->SetPosition((CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth - pControl->GetWidth()) * 0.5f,
-                          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iSubtitles - pControl->GetHeight());
-    pControl->SetLocation(0, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iSubtitles, false);
+    pControl->SetLimits(0, info.iHeight*3 / 4,
+                        0, info.iHeight*5 / 4);
+    pControl->SetPosition((info.iWidth - pControl->GetWidth()) * 0.5f,
+                          info.iSubtitles - pControl->GetHeight());
+    pControl->SetLocation(0, info.iSubtitles, false);
   }
   // lastly the pixel ratio control...
-  CGUIResizeControl *pResize = (CGUIResizeControl*)GetControl(CONTROL_PIXEL_RATIO);
+  CGUIResizeControl *pResize = dynamic_cast<CGUIResizeControl*>(GetControl(CONTROL_PIXEL_RATIO));
   if (pResize)
   {
-    pResize->SetLimits(CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth*0.25f, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*0.5f,
-                       CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth*0.75f, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight*0.5f);
-    pResize->SetHeight(CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight * 0.5f);
-    pResize->SetWidth(pResize->GetHeight() / CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).fPixelRatio);
-    pResize->SetPosition((CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth - pResize->GetWidth()) / 2,
-                         (CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight - pResize->GetHeight()) / 2);
+    pResize->SetLimits(info.iWidth*0.25f, info.iHeight*0.5f,
+                       info.iWidth*0.75f, info.iHeight*0.5f);
+    pResize->SetHeight(info.iHeight * 0.5f);
+    pResize->SetWidth(pResize->GetHeight() / info.fPixelRatio);
+    pResize->SetPosition((info.iWidth - pResize->GetWidth()) / 2,
+                         (info.iHeight - pResize->GetHeight()) / 2);
   }
   // Enable the default control
   EnableControl(m_iControl);
@@ -297,69 +313,79 @@ void CGUIWindowSettingsScreenCalibration::ResetControls()
 
 void CGUIWindowSettingsScreenCalibration::UpdateFromControl(int iControl)
 {
-  CStdString strStatus;
+  std::string strStatus;
+  RESOLUTION_INFO info = g_graphicsContext.GetResInfo(m_Res[m_iCurRes]);
+
   if (iControl == CONTROL_PIXEL_RATIO)
   {
-    CGUIResizeControl *pControl = (CGUIResizeControl*)GetControl(CONTROL_PIXEL_RATIO);
+    CGUIControl *pControl = GetControl(CONTROL_PIXEL_RATIO);
     if (pControl)
     {
       float fWidth = (float)pControl->GetWidth();
       float fHeight = (float)pControl->GetHeight();
-      CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).fPixelRatio = fHeight / fWidth;
+      info.fPixelRatio = fHeight / fWidth;
       // recenter our control...
-      pControl->SetPosition((CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth - pControl->GetWidth()) / 2,
-                            (CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight - pControl->GetHeight()) / 2);
-      strStatus.Format("%s (%5.3f)", g_localizeStrings.Get(275).c_str(), CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).fPixelRatio);
+      pControl->SetPosition((info.iWidth - pControl->GetWidth()) / 2,
+                            (info.iHeight - pControl->GetHeight()) / 2);
+      strStatus = StringUtils::Format("%s (%5.3f)", g_localizeStrings.Get(275).c_str(), info.fPixelRatio);
       SET_CONTROL_LABEL(CONTROL_LABEL_ROW2, 278);
     }
   }
   else
   {
-    CGUIMoverControl *pControl = (CGUIMoverControl*)GetControl(iControl);
+    const CGUIMoverControl *pControl = dynamic_cast<const CGUIMoverControl*>(GetControl(iControl));
     if (pControl)
     {
       switch (iControl)
       {
       case CONTROL_TOP_LEFT:
         {
-          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.left = pControl->GetXLocation();
-          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.top = pControl->GetYLocation();
-          strStatus.Format("%s (%i,%i)", g_localizeStrings.Get(272).c_str(), pControl->GetXLocation(), pControl->GetYLocation());
+          info.Overscan.left = pControl->GetXLocation();
+          info.Overscan.top = pControl->GetYLocation();
+          strStatus = StringUtils::Format("%s (%i,%i)", g_localizeStrings.Get(272).c_str(), pControl->GetXLocation(), pControl->GetYLocation());
           SET_CONTROL_LABEL(CONTROL_LABEL_ROW2, 276);
         }
         break;
 
       case CONTROL_BOTTOM_RIGHT:
         {
-          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.right = pControl->GetXLocation();
-          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).Overscan.bottom = pControl->GetYLocation();
-          int iXOff1 = CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iWidth - pControl->GetXLocation();
-          int iYOff1 = CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iHeight - pControl->GetYLocation();
-          strStatus.Format("%s (%i,%i)", g_localizeStrings.Get(273).c_str(), iXOff1, iYOff1);
+          info.Overscan.right = pControl->GetXLocation();
+          info.Overscan.bottom = pControl->GetYLocation();
+          int iXOff1 = info.iWidth - pControl->GetXLocation();
+          int iYOff1 = info.iHeight - pControl->GetYLocation();
+          strStatus = StringUtils::Format("%s (%i,%i)", g_localizeStrings.Get(273).c_str(), iXOff1, iYOff1);
           SET_CONTROL_LABEL(CONTROL_LABEL_ROW2, 276);
         }
         break;
 
       case CONTROL_SUBTITLES:
         {
-          CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iSubtitles = pControl->GetYLocation();
-          strStatus.Format("%s (%i)", g_localizeStrings.Get(274).c_str(), pControl->GetYLocation());
+          info.iSubtitles = pControl->GetYLocation();
+          strStatus = StringUtils::Format("%s (%i)", g_localizeStrings.Get(274).c_str(), pControl->GetYLocation());
           SET_CONTROL_LABEL(CONTROL_LABEL_ROW2, 277);
         }
         break;
       }
     }
   }
+
+  g_graphicsContext.SetResInfo(m_Res[m_iCurRes], info);
+
   // set the label control correctly
-  CStdString strText;
+  std::string strText;
   if (g_Windowing.IsFullScreen())
-    strText.Format("%ix%i@%.2f - %s | %s", CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iScreenWidth,
-      CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iScreenHeight, CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).fRefreshRate,
-      g_localizeStrings.Get(244).c_str(), strStatus.c_str());
+    strText = StringUtils::Format("%ix%i@%.2f - %s | %s",
+                                  info.iScreenWidth,
+                                  info.iScreenHeight,
+                                  info.fRefreshRate,
+                                  g_localizeStrings.Get(244).c_str(),
+                                  strStatus.c_str());
   else
-    strText.Format("%ix%i - %s | %s", CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iScreenWidth,
-      CDisplaySettings::Get().GetResolutionInfo(m_Res[m_iCurRes]).iScreenHeight,
-      g_localizeStrings.Get(242).c_str(), strStatus.c_str());
+    strText = StringUtils::Format("%ix%i - %s | %s",
+                                  info.iScreenWidth,
+                                  info.iScreenHeight,
+                                  g_localizeStrings.Get(242).c_str(),
+                                  strStatus.c_str());
 
   SET_CONTROL_LABEL(CONTROL_LABEL_ROW1, strText);
 }
@@ -398,7 +424,7 @@ void CGUIWindowSettingsScreenCalibration::DoProcess(unsigned int currentTime, CD
   for (int i = CONTROL_TOP_LEFT; i <= CONTROL_PIXEL_RATIO; i++)
   {
     SET_CONTROL_VISIBLE(i);
-    CGUIControl *control = (CGUIControl *)GetControl(i);
+    CGUIControl *control = GetControl(i);
     if (control)
       control->DoProcess(currentTime, dirtyregions);
   }

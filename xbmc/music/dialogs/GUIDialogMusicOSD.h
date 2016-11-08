@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ class CGUIDialogMusicOSD :
 public:
   CGUIDialogMusicOSD(void);
   virtual ~CGUIDialogMusicOSD(void);
-  virtual bool OnMessage(CGUIMessage &message);
-  virtual bool OnAction(const CAction &action);
-  virtual void FrameMove();
+  bool OnMessage(CGUIMessage &message) override;
+  bool OnAction(const CAction &action) override;
+  void FrameMove() override;
 };

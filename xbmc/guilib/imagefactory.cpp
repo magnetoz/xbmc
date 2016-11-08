@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,15 +13,14 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "imagefactory.h"
-#include "guilib/JpegIO.h"
-#include "guilib/cximage.h"
+#include "guilib/FFmpegImage.h"
+#include "utils/Mime.h"
 
 IImage* ImageFactory::CreateLoader(const std::string& strFileName)
 {
@@ -31,22 +30,13 @@ IImage* ImageFactory::CreateLoader(const std::string& strFileName)
 
 IImage* ImageFactory::CreateLoader(const CURL& url)
 {
-  return CreateLoaderFromMimeType("image/"+url.GetFileType());
+  if(!url.GetFileType().empty())
+    return CreateLoaderFromMimeType("image/"+url.GetFileType());
+
+  return CreateLoaderFromMimeType(CMime::GetMimeType(url));
 }
 
 IImage* ImageFactory::CreateLoaderFromMimeType(const std::string& strMimeType)
 {
-  if(strMimeType == "image/jpeg" || strMimeType == "image/tbn" || strMimeType == "image/jpg")
-    return new CJpegIO();
-  return new CXImage(strMimeType);
-}
-
-IImage* ImageFactory::CreateFallbackLoader(const std::string& strMimeType)
-{
-  return new CXImage(strMimeType);
-}
-
-IImage* ImageFactory::CreateFallbackLoader(const CURL& url)
-{
-  return new CXImage("image/"+url.GetFileType());
+  return new CFFmpegImage(strMimeType);
 }

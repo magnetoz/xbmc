@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,10 +20,7 @@
 
 #include "MusicInfoLoader.h"
 #include "MusicDatabase.h"
-#include "music/infoscanner/MusicInfoScanner.h"
 #include "music/tags/MusicInfoTagLoaderFactory.h"
-#include "filesystem/DirectoryCache.h"
-#include "filesystem/MusicDatabaseDirectory.h"
 #include "filesystem/MusicDatabaseDirectory/DirectoryNode.h"
 #include "filesystem/MusicDatabaseDirectory/QueryParams.h"
 #include "utils/URIUtils.h"
@@ -32,16 +29,19 @@
 #include "settings/Settings.h"
 #include "FileItem.h"
 #include "utils/log.h"
+#include "utils/Archive.h"
 #include "Artist.h"
 #include "Album.h"
 #include "MusicThumbLoader.h"
 
-using namespace std;
 using namespace XFILE;
 using namespace MUSIC_INFO;
 
 // HACK until we make this threadable - specify 1 thread only for now
-CMusicInfoLoader::CMusicInfoLoader() : CBackgroundInfoLoader(1)
+CMusicInfoLoader::CMusicInfoLoader()
+  : CBackgroundInfoLoader()
+  , m_databaseHits{0}
+  , m_tagReads{0}
 {
   m_mapFileItems = new CFileItemList;
 
@@ -58,7 +58,7 @@ CMusicInfoLoader::~CMusicInfoLoader()
 void CMusicInfoLoader::OnLoaderStart()
 {
   // Load previously cached items from HD
-  if (!m_strCacheFileName.IsEmpty())
+  if (!m_strCacheFileName.empty())
     LoadCache(m_strCacheFileName, *m_mapFileItems);
   else
   {
@@ -67,7 +67,7 @@ void CMusicInfoLoader::OnLoaderStart()
     m_mapFileItems->SetFastLookup(true);
   }
 
-  m_strPrevPath.Empty();
+  m_strPrevPath.clear();
 
   m_databaseHits = m_tagReads = 0;
 
@@ -77,7 +77,7 @@ void CMusicInfoLoader::OnLoaderStart()
   m_musicDatabase.Open();
 
   if (m_thumbLoader)
-    m_thumbLoader->Initialize();
+    m_thumbLoader->OnLoaderStart();
 }
 
 bool CMusicInfoLoader::LoadAdditionalTagInfo(CFileItem* pItem)
@@ -88,7 +88,7 @@ bool CMusicInfoLoader::LoadAdditionalTagInfo(CFileItem* pItem)
   if (pItem->GetProperty("hasfullmusictag") == "true")
     return false; // already have the information
 
-  CStdString path(pItem->GetPath());
+  std::string path(pItem->GetPath());
   if (pItem->IsMusicDb())
   {
     // set the artist / album properties
@@ -97,11 +97,11 @@ bool CMusicInfoLoader::LoadAdditionalTagInfo(CFileItem* pItem)
     CArtist artist;
     CMusicDatabase database;
     database.Open();
-    if (database.GetArtistInfo(param.GetArtistId(),artist,false))
+    if (database.GetArtist(param.GetArtistId(), artist, false))
       CMusicDatabase::SetPropertiesFromArtist(*pItem,artist);
 
     CAlbum album;
-    if (database.GetAlbumInfo(param.GetAlbumId(),album,NULL))
+    if (database.GetAlbum(param.GetAlbumId(), album, false))
       CMusicDatabase::SetPropertiesFromAlbum(*pItem,album);
 
     path = pItem->GetMusicInfoTag()->GetURL();
@@ -109,14 +109,15 @@ bool CMusicInfoLoader::LoadAdditionalTagInfo(CFileItem* pItem)
 
   CLog::Log(LOGDEBUG, "Loading additional tag info for file %s", path.c_str());
 
-  // we load up the actual tag for this file
-  auto_ptr<IMusicInfoTagLoader> pLoader (CMusicInfoTagLoaderFactory::CreateLoader(path));
+  // we load up the actual tag for this file in order to
+  // fetch the lyrics and add it to the current music info tag
+  CFileItem tempItem(path, false);
+  std::unique_ptr<IMusicInfoTagLoader> pLoader (CMusicInfoTagLoaderFactory::CreateLoader(tempItem));
   if (NULL != pLoader.get())
   {
     CMusicInfoTag tag;
     pLoader->Load(path, tag);
-    // then we set the fields from the file tags to the item
-    pItem->SetProperty("lyrics", tag.GetLyrics());
+    pItem->GetMusicInfoTag()->SetLyrics(tag.GetLyrics());
     pItem->SetProperty("hasfullmusictag", "true");
     return true;
   }
@@ -124,6 +125,25 @@ bool CMusicInfoLoader::LoadAdditionalTagInfo(CFileItem* pItem)
 }
 
 bool CMusicInfoLoader::LoadItem(CFileItem* pItem)
+{
+  bool result  = LoadItemCached(pItem);
+       result |= LoadItemLookup(pItem);
+
+  return result;
+}
+
+bool CMusicInfoLoader::LoadItemCached(CFileItem* pItem)
+{
+  if (pItem->m_bIsFolder || pItem->IsPlayList() || pItem->IsNFO() || pItem->IsInternetStream())
+    return false;
+
+  // Get thumb for item
+  m_thumbLoader->LoadItem(pItem);
+
+  return true;
+}
+
+bool CMusicInfoLoader::LoadItemLookup(CFileItem* pItem)
 {
   if (m_pProgressCallback && !pItem->m_bIsFolder)
     m_pProgressCallback->SetProgressAdvance();
@@ -143,8 +163,7 @@ bool CMusicInfoLoader::LoadItem(CFileItem* pItem)
     }
     else
     {
-      CStdString strPath;
-      URIUtils::GetDirectory(pItem->GetPath(), strPath);
+      std::string strPath = URIUtils::GetDirectory(pItem->GetPath());
       URIUtils::AddSlashAtEnd(strPath);
       if (strPath!=m_strPrevPath)
       {
@@ -158,6 +177,7 @@ bool CMusicInfoLoader::LoadItem(CFileItem* pItem)
       if (it != m_songsMap.end())
       {  // Have we loaded this item from database before
         pItem->GetMusicInfoTag()->SetSong(it->second);
+        pItem->GetMusicInfoTag()->SetCueSheet(m_musicDatabase.LoadCuesheet(it->second.strFileName));
         if (!it->second.strThumb.empty())
           pItem->SetArt("thumb", it->second.strThumb);
       }
@@ -173,11 +193,11 @@ bool CMusicInfoLoader::LoadItem(CFileItem* pItem)
             pItem->SetArt("thumb", song.strThumb);
         }
       }
-      else if (CSettings::Get().GetBool("musicfiles.usetags") || pItem->IsCDDA())
+      else if (CSettings::GetInstance().GetBool(CSettings::SETTING_MUSICFILES_USETAGS) || pItem->IsCDDA())
       { // Nothing found, load tag from file,
         // always try to load cddb info
         // get correct tag parser
-        auto_ptr<IMusicInfoTagLoader> pLoader (CMusicInfoTagLoaderFactory::CreateLoader(pItem->GetPath()));
+        std::unique_ptr<IMusicInfoTagLoader> pLoader (CMusicInfoTagLoaderFactory::CreateLoader(*pItem));
         if (NULL != pLoader.get())
           // get tag
           pLoader->Load(pItem->GetPath(), *pItem->GetMusicInfoTag());
@@ -187,9 +207,6 @@ bool CMusicInfoLoader::LoadItem(CFileItem* pItem)
       m_strPrevPath = strPath;
     }
   }
-
-  // Get thumb for item
-  m_thumbLoader->LoadItem(pItem);
 
   return true;
 }
@@ -203,7 +220,7 @@ void CMusicInfoLoader::OnLoaderFinish()
   m_mapFileItems->Clear();
 
   // Save loaded items to HD
-  if (!m_strCacheFileName.IsEmpty())
+  if (!m_strCacheFileName.empty())
     SaveCache(m_strCacheFileName, *m_pVecItems);
   else if (!m_bStop && (m_databaseHits > 1 || m_tagReads > 0))
     m_pVecItems->Save();
@@ -211,15 +228,15 @@ void CMusicInfoLoader::OnLoaderFinish()
   m_musicDatabase.Close();
 
   if (m_thumbLoader)
-    m_thumbLoader->Deinitialize();
+    m_thumbLoader->OnLoaderFinish();
 }
 
-void CMusicInfoLoader::UseCacheOnHD(const CStdString& strFileName)
+void CMusicInfoLoader::UseCacheOnHD(const std::string& strFileName)
 {
   m_strCacheFileName = strFileName;
 }
 
-void CMusicInfoLoader::LoadCache(const CStdString& strFileName, CFileItemList& items)
+void CMusicInfoLoader::LoadCache(const std::string& strFileName, CFileItemList& items)
 {
   CFile file;
 
@@ -240,7 +257,7 @@ void CMusicInfoLoader::LoadCache(const CStdString& strFileName, CFileItemList& i
   }
 }
 
-void CMusicInfoLoader::SaveCache(const CStdString& strFileName, CFileItemList& items)
+void CMusicInfoLoader::SaveCache(const std::string& strFileName, CFileItemList& items)
 {
   int iSize = items.Size();
 

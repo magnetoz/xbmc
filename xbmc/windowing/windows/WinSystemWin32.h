@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,12 @@
 #ifndef WINDOW_SYSTEM_WIN32_H
 #define WINDOW_SYSTEM_WIN32_H
 
+#include "guilib/DispResource.h"
+#include "threads/CriticalSection.h"
+#include "threads/SystemClock.h"
 #include "windowing/WinSystem.h"
+#include <string>
+#include <vector>
 
 struct MONITOR_DETAILS
 {
@@ -33,9 +38,9 @@ struct MONITOR_DETAILS
   bool      Interlaced;
 
   HMONITOR  hMonitor;
-  char      MonitorName[128];
-  char      CardName[128];
-  char      DeviceName[128];
+  std::wstring MonitorNameW;
+  std::wstring CardNameW;
+  std::wstring DeviceNameW;
   int       ScreenNumber; // XBMC POV, not Windows. Windows primary is XBMC #0, then each secondary is +1.
 };
 
@@ -131,9 +136,10 @@ public:
   // CWinSystemBase
   virtual bool InitWindowSystem();
   virtual bool DestroyWindowSystem();
-  virtual bool CreateNewWindow(const CStdString& name, bool fullScreen, RESOLUTION_INFO& res, PHANDLE_EVENT_FUNC userFunction);
+  virtual bool CreateNewWindow(const std::string& name, bool fullScreen, RESOLUTION_INFO& res, PHANDLE_EVENT_FUNC userFunction);
   virtual bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop);
   virtual bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays);
+  virtual bool SetFullScreenEx(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays, bool forceResChange);
   virtual void UpdateResolutions();
   virtual bool CenterWindow();
   virtual void NotifyAppFocusChange(bool bGaining);
@@ -161,12 +167,12 @@ public:
   pCloseGestureInfoHandle PtrCloseGestureInfoHandle;
 
 protected:
-  bool ChangeResolution(RESOLUTION_INFO res);
+  bool ChangeResolution(const RESOLUTION_INFO& res, bool forceChange = false);
   virtual bool ResizeInternal(bool forceRefresh = false);
   virtual bool UpdateResolutionsInternal();
   virtual bool CreateBlankWindows();
   virtual bool BlankNonActiveMonitors(bool bBlank);
-  const MONITOR_DETAILS &GetMonitor(int screen) const;
+  const MONITOR_DETAILS* GetMonitor(int screen) const;
   void RestoreDesktopResolution(int screen);
   RECT ScreenRect(int screen);
   /*!
@@ -174,6 +180,14 @@ protected:
    \param res resolution to add.
    */
   void AddResolution(const RESOLUTION_INFO &res);
+
+  virtual void Register(IDispResource *resource);
+  virtual void Unregister(IDispResource *resource);
+  void OnDisplayLost();
+  void OnDisplayReset();
+  void OnDisplayBack();
+  void ResolutionChanged();
+  void SetForegroundWindowInternal(HWND hWnd);
 
   HWND m_hWnd;
   std::vector<HWND> m_hBlankWindows;
@@ -184,6 +198,11 @@ protected:
   int m_nPrimary;
   bool m_ValidWindowedPosition;
   bool m_IsAlteringWindow;
+
+  CCriticalSection m_resourceSection;
+  std::vector<IDispResource*> m_resources;
+  bool m_delayDispReset;
+  XbmcThreads::EndTime m_dispResetTimer;
 };
 
 extern HWND g_hWnd;

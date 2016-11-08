@@ -1,4 +1,3 @@
-#pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
  *      http://xbmc.org
@@ -18,16 +17,19 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+#pragma once
+#include <Neptune/Source/Core/NptTypes.h>
+#include <Neptune/Source/Core/NptReferences.h>
+#include <Neptune/Source/Core/NptStrings.h>
+
 #include "system.h"
-#include "utils/StdString.h"
-#include "NptTypes.h"
-#include "NptReferences.h"
-#include "NptStrings.h"
 #include "FileItem.h"
+#include <string>
 
 class CUPnPServer;
 class CFileItem;
 class CThumbLoader;
+class PLT_DeviceData;
 class PLT_HttpRequestContext;
 class PLT_MediaItemResource;
 class PLT_MediaObject;
@@ -39,6 +41,14 @@ class CVideoInfoTag;
 
 namespace UPNP
 {
+  enum UPnPService {
+    UPnPServiceNone = 0,
+    UPnPClient,
+    UPnPContentDirectory,
+    UPnPPlayer,
+    UPnPRenderer
+  };
+
   class CResourceFinder {
   public:
     CResourceFinder(const char* protocol, const char* content = NULL);
@@ -64,40 +74,58 @@ namespace UPNP
 
   EClientQuirks GetClientQuirks(const PLT_HttpRequestContext* context);
 
+  enum EMediaControllerQuirks
+  {
+    EMEDIACONTROLLERQUIRKS_NONE   = 0x00
+
+    /* Media Controller expects MIME type video/x-mkv instead of video/x-matroska (Samsung) */
+  , EMEDIACONTROLLERQUIRKS_X_MKV  = 0x01
+  };
+
+  EMediaControllerQuirks GetMediaControllerQuirks(const PLT_DeviceData *device);
+
   const char* GetMimeTypeFromExtension(const char* extension, const PLT_HttpRequestContext* context = NULL);
   NPT_String  GetMimeType(const CFileItem& item, const PLT_HttpRequestContext* context = NULL);
   NPT_String  GetMimeType(const char* filename, const PLT_HttpRequestContext* context = NULL);
   const NPT_String GetProtocolInfo(const CFileItem& item, const char* protocol, const PLT_HttpRequestContext* context = NULL);
 
 
-  const CStdString& CorrectAllItemsSortHack(const CStdString &item);
+  const std::string& CorrectAllItemsSortHack(const std::string &item);
 
   NPT_Result PopulateTagFromObject(MUSIC_INFO::CMusicInfoTag& tag,
                                    PLT_MediaObject&           object,
-                                   PLT_MediaItemResource*     resource = NULL);
+                                   PLT_MediaItemResource*     resource = NULL,
+                                   UPnPService                service = UPnPServiceNone);
+
   NPT_Result PopulateTagFromObject(CVideoInfoTag&             tag,
                                    PLT_MediaObject&           object,
-                                   PLT_MediaItemResource*     resource = NULL);
+                                   PLT_MediaItemResource*     resource = NULL,
+                                   UPnPService                service = UPnPServiceNone);
 
-  NPT_Result PopulateObjectFromTag(MUSIC_INFO::CMusicInfoTag&         tag,
-                                          PLT_MediaObject&       object,
-                                          NPT_String*            file_path,
-                                          PLT_MediaItemResource* resource,
-                                          EClientQuirks          quirks);
-  NPT_Result PopulateObjectFromTag(CVideoInfoTag&         tag,
-                                          PLT_MediaObject&       object,
-                                          NPT_String*            file_path,
-                                          PLT_MediaItemResource* resource,
-                                          EClientQuirks          quirks);
+  NPT_Result PopulateObjectFromTag(MUSIC_INFO::CMusicInfoTag& tag,
+                                   PLT_MediaObject&           object,
+                                   NPT_String*                file_path,
+                                   PLT_MediaItemResource*     resource,
+                                   EClientQuirks              quirks,
+                                   UPnPService                service = UPnPServiceNone);
 
-  PLT_MediaObject* BuildObject(CFileItem&              item,
-                                      NPT_String&                   file_path,
-                                      bool                          with_count,
-                                      NPT_Reference<CThumbLoader>&  thumb_loader,
-                                      const PLT_HttpRequestContext* context = NULL,
-                                      CUPnPServer*                  upnp_server = NULL);
+  NPT_Result PopulateObjectFromTag(CVideoInfoTag&             tag,
+                                   PLT_MediaObject&           object,
+                                   NPT_String*                file_path,
+                                   PLT_MediaItemResource*     resource,
+                                   EClientQuirks              quirks,
+                                   UPnPService                service = UPnPServiceNone);
 
-  CFileItemPtr     BuildObject(PLT_MediaObject* entry);
+  PLT_MediaObject* BuildObject(CFileItem&                     item,
+                               NPT_String&                    file_path,
+                               bool                           with_count,
+                               NPT_Reference<CThumbLoader>&   thumb_loader,
+                               const PLT_HttpRequestContext*  context = NULL,
+                               CUPnPServer*                   upnp_server = NULL,
+                               UPnPService                    upnp_service = UPnPServiceNone);
+
+  CFileItemPtr     BuildObject(PLT_MediaObject* entry,
+                               UPnPService      upnp_service = UPnPServiceNone);
 
   bool             GetResource(const PLT_MediaObject* entry, CFileItem& item);
   CFileItemPtr     GetFileItem(const NPT_String& uri, const NPT_String& meta);

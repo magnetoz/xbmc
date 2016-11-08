@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,27 +36,20 @@ enum VideoSelectAction
   SELECT_ACTION_PLAYPART
 };
 
-class CGUIWindowVideoBase : public CGUIMediaWindow, public IBackgroundLoaderObserver, public IStreamDetailsObserver
+class CGUIWindowVideoBase : public CGUIMediaWindow, public IBackgroundLoaderObserver
 {
 public:
-  CGUIWindowVideoBase(int id, const CStdString &xmlFile);
+  CGUIWindowVideoBase(int id, const std::string &xmlFile);
   virtual ~CGUIWindowVideoBase(void);
-  virtual bool OnMessage(CGUIMessage& message);
-  virtual bool OnAction(const CAction &action);
+  virtual bool OnMessage(CGUIMessage& message) override;
+  virtual bool OnAction(const CAction &action) override;
 
-  void PlayMovie(const CFileItem *item);
+  void PlayMovie(const CFileItem *item, const std::string &player = "");
   static void GetResumeItemOffset(const CFileItem *item, int& startoffset, int& partNumber);
   static bool HasResumeItemOffset(const CFileItem *item);
 
   void AddToDatabase(int iItem);
-  virtual void OnInfo(CFileItem* pItem, const ADDON::ScraperPtr& scraper);
-  virtual void OnStreamDetails(const CStreamDetails &details, const CStdString &strFileName, long lFileId);
-  static void MarkWatched(const CFileItemPtr &pItem, bool bMark);
-  static void UpdateVideoTitle(const CFileItem* pItem);
-
-  /*! \brief Show dialog allowing selection of wanted playback item */
-  static bool ShowPlaySelection(CFileItemPtr& item);
-  static bool ShowPlaySelection(CFileItemPtr& item, const CStdString& directory);
+  virtual void OnItemInfo(const CFileItem& fileItem, ADDON::ScraperPtr& scraper);
 
 
   /*! \brief Show the resume menu for this item (if it has a resume bookmark)
@@ -77,64 +70,61 @@ public:
    \param results the fileitemlist to append the search results to.
    \sa DoSearch
    */
-  static void AppendAndClearSearchItems(CFileItemList &searchItems, const CStdString &prependLabel, CFileItemList &results);
+  static void AppendAndClearSearchItems(CFileItemList &searchItems, const std::string &prependLabel, CFileItemList &results);
 
   /*! \brief Prompt the user for assigning content to a path.
    Based on changes, we then call OnUnassignContent, update or refresh scraper information in the database
    and optionally start a scan
    \param path the path to assign content for
    */
-  static void OnAssignContent(const CStdString &path);
+  static void OnAssignContent(const std::string &path);
 
   /*! \brief checks the database for a resume position and puts together a string
    \param item selected item
    \return string containing the resume position or an empty string if there is no resume position
    */
-  static CStdString GetResumeString(const CFileItem &item);
+  static std::string GetResumeString(const CFileItem &item);
 
 protected:
-  void OnScan(const CStdString& strPath, bool scanAll = false);
-  virtual void OnInitWindow();
-  virtual void UpdateButtons();
-  virtual bool Update(const CStdString &strDirectory, bool updateFilterPath = true);
-  virtual bool GetDirectory(const CStdString &strDirectory, CFileItemList &items);
-  virtual void OnItemLoaded(CFileItem* pItem) {};
-  virtual void GetGroupedItems(CFileItemList &items);
+  void OnScan(const std::string& strPath, bool scanAll = false);
+  virtual bool Update(const std::string &strDirectory, bool updateFilterPath = true) override;
+  virtual bool GetDirectory(const std::string &strDirectory, CFileItemList &items) override;
+  virtual void OnItemLoaded(CFileItem* pItem) override {};
+  virtual void GetGroupedItems(CFileItemList &items) override;
 
-  virtual bool CheckFilterAdvanced(CFileItemList &items) const;
-  virtual bool CanContainFilter(const CStdString &strDirectory) const;
+  virtual bool CheckFilterAdvanced(CFileItemList &items) const override;
+  virtual bool CanContainFilter(const std::string &strDirectory) const override;
 
-  virtual void GetContextButtons(int itemNumber, CContextButtons &buttons);
-  void GetNonContextButtons(int itemNumber, CContextButtons &buttons);
-  virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
+  virtual void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+  virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
   virtual void OnQueueItem(int iItem);
   virtual void OnDeleteItem(CFileItemPtr pItem);
-  virtual void OnDeleteItem(int iItem);
-  virtual void DoSearch(const CStdString& strSearch, CFileItemList& items) {};
-  virtual CStdString GetStartFolder(const CStdString &dir);
+  virtual void OnDeleteItem(int iItem) override;
+  virtual void DoSearch(const std::string& strSearch, CFileItemList& items) {};
+  virtual std::string GetStartFolder(const std::string &dir) override;
 
-  bool OnClick(int iItem);
-  bool OnSelect(int iItem);
+  bool OnClick(int iItem, const std::string &player = "") override;
+  bool OnSelect(int iItem) override;
   /*! \brief react to an Info action on a view item
    \param item the selected item
    \return true if the action is performed, false otherwise
    */
-  bool OnInfo(int item);
+  bool OnItemInfo(int item);
   /*! \brief perform a given action on a file
    \param item the selected item
    \param action the action to perform
    \return true if the action is performed, false otherwise
    */
-  bool OnFileAction(int item, int action);
+  bool OnFileAction(int item, int action, std::string player);
 
-  void OnRestartItem(int iItem);
-  bool OnResumeItem(int iItem);
-  void PlayItem(int iItem);
-  virtual bool OnPlayMedia(int iItem);
-  virtual bool OnPlayAndQueueMedia(const CFileItemPtr &item);
-  void LoadPlayList(const CStdString& strPlayList, int iPlayList = PLAYLIST_VIDEO);
+  void OnRestartItem(int iItem, const std::string &player = "");
+  bool OnResumeItem(int iItem, const std::string &player = "");
+  void PlayItem(int iItem, const std::string &player = "");
+  virtual bool OnPlayMedia(int iItem, const std::string &player = "") override;
+  virtual bool OnPlayAndQueueMedia(const CFileItemPtr &item, std::string player = "") override;
+  void LoadPlayList(const std::string& strPlayList, int iPlayList = PLAYLIST_VIDEO);
 
-  bool ShowIMDB(CFileItem *item, const ADDON::ScraperPtr& content);
+  bool ShowIMDB(CFileItemPtr item, const ADDON::ScraperPtr& content, bool fromDB);
 
   void AddItemToPlayList(const CFileItemPtr &pItem, CFileItemList &queuedItems);
 
@@ -142,7 +132,7 @@ protected:
   void OnSearchItemFound(const CFileItem* pSelItem);
   int GetScraperForItem(CFileItem *item, ADDON::ScraperPtr &info, VIDEO::SScanSettings& settings);
 
-  static bool OnUnAssignContent(const CStdString &path, int label1, int label2, int label3);
+  static bool OnUnAssignContent(const std::string &path, int header, int text);
 
   static bool StackingAvailable(const CFileItemList &items);
 

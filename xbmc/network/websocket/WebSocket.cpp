@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +26,6 @@
 #include "utils/log.h"
 #include "utils/HttpParser.h"
 #include "utils/Base64.h"
-#include "utils/StdString.h"
 #include "utils/StringUtils.h"
 #include "utils/HttpResponse.h"
 
@@ -42,8 +41,6 @@
 #define CONTROL_FRAME 0x08
 
 #define LENGTH_MIN    0x2
-
-using namespace std;
 
 CWebSocketFrame::CWebSocketFrame(const char* data, uint64_t length)
 {
@@ -161,7 +158,7 @@ CWebSocketFrame::CWebSocketFrame(WebSocketFrameOpcode opcode, const char* data /
   m_final = final;
   m_extension = extension;
 
-  string buffer;
+  std::string buffer;
   char dataByte = 0;
 
   // Set the FIN flag
@@ -320,7 +317,7 @@ const CWebSocketMessage* CWebSocket::Handle(const char* &buffer, size_t &length,
         }
 
         // adjust the length and the buffer values
-        length -= frame->GetFrameLength();
+        length -= (size_t)frame->GetFrameLength();
         buffer += frame->GetFrameLength();
 
         if (frame->IsControlFrame())
@@ -395,7 +392,7 @@ const CWebSocketMessage* CWebSocket::Handle(const char* &buffer, size_t &length,
         if (frame->IsValid())
         {
           // adjust the length and the buffer values
-          length -= frame->GetFrameLength();
+          length -= (size_t)frame->GetFrameLength();
           buffer += frame->GetFrameLength();
         }
 

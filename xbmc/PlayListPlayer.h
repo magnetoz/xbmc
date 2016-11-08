@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,14 +20,19 @@
  */
 
 #include "guilib/IMsgTargetCallback.h"
-#include <boost/shared_ptr.hpp>
+#include "messaging/IMessageTarget.h"
+#include "ServiceBroker.h"
+#include <memory>
 
 #define PLAYLIST_NONE    -1
 #define PLAYLIST_MUSIC   0
 #define PLAYLIST_VIDEO   1
 #define PLAYLIST_PICTURE 2
 
-class CFileItem; typedef boost::shared_ptr<CFileItem> CFileItemPtr;
+#define g_playlistPlayer CServiceBroker::GetPlaylistPlayer()
+
+class CAction;
+class CFileItem; typedef std::shared_ptr<CFileItem> CFileItemPtr;
 class CFileItemList;
 
 class CVariant;
@@ -42,13 +47,17 @@ enum REPEAT_STATE { REPEAT_NONE = 0, REPEAT_ONE, REPEAT_ALL };
 
 class CPlayList;
 
-class CPlayListPlayer : public IMsgTargetCallback
+class CPlayListPlayer : public IMsgTargetCallback,
+                        public KODI::MESSAGING::IMessageTarget
 {
 
 public:
   CPlayListPlayer(void);
   virtual ~CPlayListPlayer(void);
-  virtual bool OnMessage(CGUIMessage &message);
+  virtual bool OnMessage(CGUIMessage &message) override;
+
+  virtual int GetMessageMask() override;
+  virtual void OnApplicationMessage(KODI::MESSAGING::ThreadMessage* pMsg) override;
 
   /*! \brief Play the next (or another) entry in the current playlist
    \param offset The offset from the current entry (defaults to 1, i.e. the next entry).
@@ -68,7 +77,7 @@ public:
    \param replace whether this item should replace the currently playing item. See CApplication::PlayFile (defaults to false).
    \param playPreviousOnFail whether to go back to the previous item if playback fails (default to false)
    */
-  bool Play(int index, bool replace = false, bool playPreviousOnFail = false);
+  bool Play(int index, std::string player, bool replace = false, bool playPreviousOnFail = false);
 
   /*! \brief Returns the index of the current item in active playlist.
    \return Current item in the active playlist.
@@ -165,6 +174,10 @@ public:
   void Insert(int iPlaylist, CFileItemList& items, int iIndex);
   void Remove(int iPlaylist, int iPosition);
   void Swap(int iPlaylist, int indexItem1, int indexItem2);
+
+  bool IsSingleItemNonRepeatPlaylist() const;
+
+  bool OnAction(const CAction &action);
 protected:
   /*! \brief Returns true if the given is set to repeat all
    \param playlist Playlist to be query
@@ -195,9 +208,3 @@ protected:
 };
 
 }
-
-/*!
- \ingroup windows
- \brief Global instance of playlist player
- */
-extern PLAYLIST::CPlayListPlayer g_playlistPlayer;

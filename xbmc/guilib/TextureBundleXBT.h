@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,38 +20,44 @@
  *
  */
 
-#include "utils/StdString.h"
 #include <map>
-#include "XBTFReader.h"
+#include <memory>
+#include <string>
+#include <vector>
 
 class CBaseTexture;
+class CXBTFReader;
+class CXBTFFrame;
 
 class CTextureBundleXBT
 {
 public:
-  CTextureBundleXBT(void);
-  ~CTextureBundleXBT(void);
+  CTextureBundleXBT();
+  explicit CTextureBundleXBT(bool themeBundle);
+  ~CTextureBundleXBT();
 
-  void Cleanup();
   void SetThemeBundle(bool themeBundle);
-  bool HasFile(const CStdString& Filename);
-  void GetTexturesFromPath(const CStdString &path, std::vector<CStdString> &textures);
-  static CStdString Normalize(const CStdString &name);
+  bool HasFile(const std::string& Filename);
+  void GetTexturesFromPath(const std::string &path, std::vector<std::string> &textures);
+  static std::string Normalize(const std::string &name);
 
-  bool LoadTexture(const CStdString& Filename, CBaseTexture** ppTexture,
+  bool LoadTexture(const std::string& Filename, CBaseTexture** ppTexture,
                        int &width, int &height);
 
-  int LoadAnim(const CStdString& Filename, CBaseTexture*** ppTextures,
+  int LoadAnim(const std::string& Filename, CBaseTexture*** ppTextures,
                 int &width, int &height, int& nLoops, int** ppDelays);
+
+  static uint8_t* UnpackFrame(const CXBTFReader& reader, const CXBTFFrame& frame);
 
 private:
   bool OpenBundle();
-  bool ConvertFrameToTexture(const CStdString& name, CXBTFFrame& frame, CBaseTexture** ppTexture);
+  bool ConvertFrameToTexture(const std::string& name, CXBTFFrame& frame, CBaseTexture** ppTexture);
 
   time_t m_TimeStamp;
 
   bool m_themeBundle;
-  CXBTFReader m_XBTFReader;
+  std::string m_path;
+  std::shared_ptr<CXBTFReader> m_XBTFReader;
 };
 
 

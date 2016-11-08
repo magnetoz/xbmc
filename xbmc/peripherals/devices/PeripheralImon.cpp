@@ -20,25 +20,17 @@
 
 #include "PeripheralImon.h"
 #include "utils/log.h"
-#include "guilib/LocalizeStrings.h"
 #include "settings/Settings.h"
 #include "threads/Atomics.h"
-#if defined (TARGET_WINDOWS)
-#include "system.h" // For HAS_SDL_JOYSTICK
-#if defined (HAS_SDL_JOYSTICK)
-#include "input/windows/WINJoystick.h"
-#endif // HAS_SDL_JOYSTICK
-#endif // TARGET_WINDOWS
-
+#include "input/InputManager.h"
 
 using namespace PERIPHERALS;
-using namespace std;
 
 volatile long CPeripheralImon::m_lCountOfImonsConflictWithDInput = 0;
 
 
-CPeripheralImon::CPeripheralImon(const PeripheralScanResult& scanResult) :
-  CPeripheralHID(scanResult)
+CPeripheralImon::CPeripheralImon(const PeripheralScanResult& scanResult, CPeripheralBus* bus) :
+  CPeripheralHID(scanResult, bus)
 {
   m_features.push_back(FEATURE_IMON);
   m_bImonConflictsWithDInput = false;
@@ -75,15 +67,15 @@ bool CPeripheralImon::InitialiseFeature(const PeripheralFeature feature)
   return CPeripheralHID::InitialiseFeature(feature);
 }
 
-void CPeripheralImon::AddSetting(const CStdString &strKey, const CSetting *setting)
+void CPeripheralImon::AddSetting(const std::string &strKey, const CSetting *setting, int order)
 {
 #if !defined(TARGET_WINDOWS)
   if (strKey.compare("disable_winjoystick")!=0)
 #endif // !TARGET_WINDOWS
-    CPeripheralHID::AddSetting(strKey, setting);
+    CPeripheralHID::AddSetting(strKey, setting, order);
 }
 
-void CPeripheralImon::OnSettingChanged(const CStdString &strChangedSetting)
+void CPeripheralImon::OnSettingChanged(const std::string &strChangedSetting)
 {
   if (strChangedSetting.compare("disable_winjoystick") == 0)
   {
@@ -104,14 +96,5 @@ void CPeripheralImon::OnSettingChanged(const CStdString &strChangedSetting)
 
 void CPeripheralImon::ActionOnImonConflict(bool deviceInserted /*= true*/)
 {
-  if (deviceInserted || m_lCountOfImonsConflictWithDInput == 0)
-  {
-#if defined(TARGET_WINDOWS) && defined (HAS_SDL_JOYSTICK)
-    bool enableJoystickNow = !deviceInserted && CSettings::Get().GetBool("input.enablejoystick");
-    CLog::Log(LOGNOTICE, "Problematic iMON hardware %s. Joystick usage: %s", (deviceInserted ? "detected" : "was removed"),
-        (enableJoystickNow) ? "enabled." : "disabled." );
-    g_Joystick.SetEnabled(enableJoystickNow);
-#endif
-  }
 }
 

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,11 +19,12 @@
  */
 
 #include "GUIScrollBarControl.h"
-#include "Key.h"
+#include "input/Key.h"
+#include "utils/StringUtils.h"
 
 #define MIN_NIB_SIZE 4.0f
 
-CGUIScrollBar::CGUIScrollBar(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& backGroundTexture, const CTextureInfo& barTexture, const CTextureInfo& barTextureFocus, const CTextureInfo& nibTexture, const CTextureInfo& nibTextureFocus, ORIENTATION orientation, bool showOnePage)
+GUIScrollBarControl::GUIScrollBarControl(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& backGroundTexture, const CTextureInfo& barTexture, const CTextureInfo& barTextureFocus, const CTextureInfo& nibTexture, const CTextureInfo& nibTextureFocus, ORIENTATION orientation, bool showOnePage)
     : CGUIControl(parentID, controlID, posX, posY, width, height)
     , m_guiBackground(posX, posY, width, height, backGroundTexture)
     , m_guiBarNoFocus(posX, posY, width, height, barTexture)
@@ -41,11 +42,11 @@ CGUIScrollBar::CGUIScrollBar(int parentID, int controlID, float posX, float posY
   m_showOnePage = showOnePage;
 }
 
-CGUIScrollBar::~CGUIScrollBar(void)
+GUIScrollBarControl::~GUIScrollBarControl(void)
 {
 }
 
-void CGUIScrollBar::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
+void GUIScrollBarControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
   bool changed = false;
 
@@ -64,7 +65,7 @@ void CGUIScrollBar::Process(unsigned int currentTime, CDirtyRegionList &dirtyreg
   CGUIControl::Process(currentTime, dirtyregions);
 }
 
-void CGUIScrollBar::Render()
+void GUIScrollBarControl::Render()
 {
   m_guiBackground.Render();
   if (m_bHasFocus)
@@ -81,7 +82,7 @@ void CGUIScrollBar::Render()
   CGUIControl::Render();
 }
 
-bool CGUIScrollBar::OnMessage(CGUIMessage& message)
+bool GUIScrollBarControl::OnMessage(CGUIMessage& message)
 {
   switch (message.GetMessage())
   {
@@ -101,7 +102,7 @@ bool CGUIScrollBar::OnMessage(CGUIMessage& message)
   return CGUIControl::OnMessage(message);
 }
 
-bool CGUIScrollBar::OnAction(const CAction &action)
+bool GUIScrollBarControl::OnAction(const CAction &action)
 {
   switch ( action.GetID() )
   {
@@ -139,7 +140,7 @@ bool CGUIScrollBar::OnAction(const CAction &action)
   return CGUIControl::OnAction(action);
 }
 
-bool CGUIScrollBar::Move(int numSteps)
+bool GUIScrollBarControl::Move(int numSteps)
 {
   if (numSteps < 0 && m_offset == 0) // we are at the beginning - can't scroll up/left anymore
     return false;
@@ -155,7 +156,7 @@ bool CGUIScrollBar::Move(int numSteps)
   return true;
 }
 
-void CGUIScrollBar::SetRange(int pageSize, int numItems)
+void GUIScrollBarControl::SetRange(int pageSize, int numItems)
 {
   if (m_pageSize != pageSize || m_numItems != numItems)
   {
@@ -166,7 +167,7 @@ void CGUIScrollBar::SetRange(int pageSize, int numItems)
   }
 }
 
-void CGUIScrollBar::SetValue(int value)
+void GUIScrollBarControl::SetValue(int value)
 {
   if (m_offset != value)
   {
@@ -175,7 +176,7 @@ void CGUIScrollBar::SetValue(int value)
   }
 }
 
-void CGUIScrollBar::FreeResources(bool immediately)
+void GUIScrollBarControl::FreeResources(bool immediately)
 {
   CGUIControl::FreeResources(immediately);
   m_guiBackground.FreeResources(immediately);
@@ -185,7 +186,7 @@ void CGUIScrollBar::FreeResources(bool immediately)
   m_guiNibFocus.FreeResources(immediately);
 }
 
-void CGUIScrollBar::DynamicResourceAlloc(bool bOnOff)
+void GUIScrollBarControl::DynamicResourceAlloc(bool bOnOff)
 {
   CGUIControl::DynamicResourceAlloc(bOnOff);
   m_guiBackground.DynamicResourceAlloc(bOnOff);
@@ -195,7 +196,7 @@ void CGUIScrollBar::DynamicResourceAlloc(bool bOnOff)
   m_guiNibFocus.DynamicResourceAlloc(bOnOff);
 }
 
-void CGUIScrollBar::AllocResources()
+void GUIScrollBarControl::AllocResources()
 {
   CGUIControl::AllocResources();
   m_guiBackground.AllocResources();
@@ -205,7 +206,7 @@ void CGUIScrollBar::AllocResources()
   m_guiNibFocus.AllocResources();
 }
 
-void CGUIScrollBar::SetInvalid()
+void GUIScrollBarControl::SetInvalid()
 {
   CGUIControl::SetInvalid();
   m_guiBackground.SetInvalid();
@@ -215,7 +216,7 @@ void CGUIScrollBar::SetInvalid()
   m_guiNibFocus.SetInvalid();
 }
 
-bool CGUIScrollBar::UpdateBarSize()
+bool GUIScrollBarControl::UpdateBarSize()
 {
   bool changed = false;
 
@@ -274,24 +275,17 @@ bool CGUIScrollBar::UpdateBarSize()
   return changed;
 }
 
-bool CGUIScrollBar::HitTest(const CPoint &point) const
-{
-  if (m_guiBackground.HitTest(point)) return true;
-  if (m_guiBarNoFocus.HitTest(point)) return true;
-  return false;
-}
-
-void CGUIScrollBar::SetFromPosition(const CPoint &point)
+void GUIScrollBarControl::SetFromPosition(const CPoint &point)
 {
   float fPercent;
   if (m_orientation == VERTICAL)
-    fPercent = (point.y - m_guiBackground.GetYPosition() - 0.5f*m_guiBarFocus.GetHeight()) / m_guiBackground.GetHeight();
+    fPercent = (point.y - m_guiBackground.GetYPosition() - 0.5f*m_guiBarFocus.GetHeight()) / (m_guiBackground.GetHeight() - m_guiBarFocus.GetHeight());
   else
-    fPercent = (point.x - m_guiBackground.GetXPosition() - 0.5f*m_guiBarFocus.GetWidth()) / m_guiBackground.GetWidth();
+    fPercent = (point.x - m_guiBackground.GetXPosition() - 0.5f*m_guiBarFocus.GetWidth()) / (m_guiBackground.GetWidth() - m_guiBarFocus.GetWidth());
   if (fPercent < 0) fPercent = 0;
   if (fPercent > 1) fPercent = 1;
 
-  int offset = (int)(floor(fPercent * m_numItems + 0.5f));
+  int offset = (int)(floor(fPercent * (m_numItems - m_pageSize) + 0.5f));
 
   if (m_offset != offset)
   {
@@ -302,7 +296,7 @@ void CGUIScrollBar::SetFromPosition(const CPoint &point)
   }
 }
 
-EVENT_RESULT CGUIScrollBar::OnMouseEvent(const CPoint &point, const CMouseEvent &event)
+EVENT_RESULT GUIScrollBarControl::OnMouseEvent(const CPoint &point, const CMouseEvent &event)
 {
   if (event.m_id == ACTION_MOUSE_DRAG)
   {
@@ -359,14 +353,12 @@ EVENT_RESULT CGUIScrollBar::OnMouseEvent(const CPoint &point, const CMouseEvent 
   return EVENT_RESULT_UNHANDLED;
 }
 
-CStdString CGUIScrollBar::GetDescription() const
+std::string GUIScrollBarControl::GetDescription() const
 {
-  CStdString description;
-  description.Format("%i/%i", m_offset, m_numItems);
-  return description;
+  return StringUtils::Format("%i/%i", m_offset, m_numItems);
 }
 
-bool CGUIScrollBar::UpdateColors()
+bool GUIScrollBarControl::UpdateColors()
 {
   bool changed = CGUIControl::UpdateColors();
   changed |= m_guiBackground.SetDiffuseColor(m_diffuseColor);
@@ -378,7 +370,7 @@ bool CGUIScrollBar::UpdateColors()
   return changed;
 }
 
-bool CGUIScrollBar::IsVisible() const
+bool GUIScrollBarControl::IsVisible() const
 {
   // page controls can be optionally disabled if the number of pages is 1
   if (m_numItems <= m_pageSize && !m_showOnePage)

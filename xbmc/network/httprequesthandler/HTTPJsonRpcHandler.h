@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,24 +19,33 @@
  *
  */
 
-#include "IHTTPRequestHandler.h"
+#include <string>
+
 #include "interfaces/json-rpc/IClient.h"
+#include "interfaces/json-rpc/ITransportLayer.h"
+#include "network/httprequesthandler/IHTTPRequestHandler.h"
 
 class CHTTPJsonRpcHandler : public IHTTPRequestHandler
 {
 public:
-  CHTTPJsonRpcHandler() { };
+  CHTTPJsonRpcHandler() { }
+  virtual ~CHTTPJsonRpcHandler() { }
   
-  virtual IHTTPRequestHandler* GetInstance() { return new CHTTPJsonRpcHandler(); }
-  virtual bool CheckHTTPRequest(const HTTPRequest &request);
-  virtual int HandleHTTPRequest(const HTTPRequest &request);
+  // implementations of IHTTPRequestHandler
+  virtual IHTTPRequestHandler* Create(const HTTPRequest &request) { return new CHTTPJsonRpcHandler(request); }
+  virtual bool CanHandleRequest(const HTTPRequest &request);
 
-  virtual void* GetHTTPResponseData() const { return (void *)m_response.c_str(); };
-  virtual size_t GetHTTPResonseDataLength() const { return m_response.size(); }
+  virtual int HandleRequest();
 
-  virtual int GetPriority() const { return 2; }
+  virtual HttpResponseRanges GetResponseData() const;
+
+  virtual int GetPriority() const { return 5; }
 
 protected:
+  explicit CHTTPJsonRpcHandler(const HTTPRequest &request)
+    : IHTTPRequestHandler(request)
+  { }
+
 #if (MHD_VERSION >= 0x00040001)
   virtual bool appendPostData(const char *data, size_t size);
 #else
@@ -44,8 +53,22 @@ protected:
 #endif
 
 private:
-  std::string m_request;
-  std::string m_response;
+  std::string m_requestData;
+  std::string m_responseData;
+  CHttpResponseRange m_responseRange;
+
+  class CHTTPTransportLayer : public JSONRPC::ITransportLayer
+  {
+  public:
+    CHTTPTransportLayer() = default;
+    ~CHTTPTransportLayer() = default;
+
+    // implementations of JSONRPC::ITransportLayer
+    bool PrepareDownload(const char *path, CVariant &details, std::string &protocol) override;
+    bool Download(const char *path, CVariant &result) override;
+    int GetCapabilities() override;
+  };
+  CHTTPTransportLayer m_transportLayer;
 
   class CHTTPClient : public JSONRPC::IClient
   {

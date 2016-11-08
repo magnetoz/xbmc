@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,12 +23,12 @@
 #include "Util.h"
 #include "addons/GUIDialogAddonInfo.h"
 #include "Autorun.h"
+#include "dialogs/GUIDialogMediaSource.h"
 #include "guilib/GUIWindowManager.h"
 #include "FileItem.h"
 #include "settings/MediaSourceSettings.h"
-#include "guilib/Key.h"
-#include "guilib/LocalizeStrings.h"
-#include "utils/log.h"
+#include "input/Key.h"
+#include "utils/StringUtils.h"
 
 #define CONTROL_BTNVIEWASICONS 2
 #define CONTROL_BTNSORTBY      3
@@ -64,8 +64,8 @@ bool CGUIWindowPrograms::OnMessage(CGUIMessage& message)
       m_dlgProgress = (CGUIDialogProgress*)g_windowManager.GetWindow(WINDOW_DIALOG_PROGRESS);
 
       // is this the first time accessing this window?
-      if (m_vecItems->GetPath() == "?" && message.GetStringParam().IsEmpty())
-        message.SetStringParam(CMediaSourceSettings::Get().GetDefaultSource("programs"));
+      if (m_vecItems->GetPath() == "?" && message.GetStringParam().empty())
+        message.SetStringParam(CMediaSourceSettings::GetInstance().GetDefaultSource("programs"));
 
       return CGUIMediaWindow::OnMessage(message);
     }
@@ -84,7 +84,7 @@ bool CGUIWindowPrograms::OnMessage(CGUIMessage& message)
         }
         else if (iAction == ACTION_SHOW_INFO)
         {
-          OnInfo(iItem);
+          OnItemInfo(iItem);
           return true;
         }
       }
@@ -100,20 +100,11 @@ void CGUIWindowPrograms::GetContextButtons(int itemNumber, CContextButtons &butt
   if (itemNumber < 0 || itemNumber >= m_vecItems->Size())
     return;
   CFileItemPtr item = m_vecItems->Get(itemNumber);
-  if (item && !item->GetProperty("pluginreplacecontextitems").asBoolean())
+  if (item)
   {
-    if ( m_vecItems->IsVirtualDirectoryRoot() )
+    if ( m_vecItems->IsVirtualDirectoryRoot() || m_vecItems->GetPath() == "sources://programs/" )
     {
       CGUIDialogContextMenu::GetContextButtons("programs", item, buttons);
-    }
-    else
-    {
-      if (!m_vecItems->IsPlugin() && (item->IsPlugin() || item->IsScript()))
-        buttons.Add(CONTEXT_BUTTON_INFO, 24003); // Add-on info
-      if (item->IsPlugin() || item->IsScript() || m_vecItems->IsPlugin())
-        buttons.Add(CONTEXT_BUTTON_PLUGIN_SETTINGS, 1045);
-
-      buttons.Add(CONTEXT_BUTTON_GOTO_ROOT, 20128); // Go to Root
     }
   }
   CGUIMediaWindow::GetContextButtons(itemNumber, buttons);
@@ -123,31 +114,20 @@ bool CGUIWindowPrograms::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
 {
   CFileItemPtr item = (itemNumber >= 0 && itemNumber < m_vecItems->Size()) ? m_vecItems->Get(itemNumber) : CFileItemPtr();
 
-  if (item && m_vecItems->IsVirtualDirectoryRoot())
+  if (CGUIDialogContextMenu::OnContextButton("programs", item, button))
   {
-    if (CGUIDialogContextMenu::OnContextButton("programs", item, button))
-    {
-      Update("");
-      return true;
-    }
-  }
-  switch (button)
-  {
-  case CONTEXT_BUTTON_GOTO_ROOT:
     Update("");
     return true;
-
-  case CONTEXT_BUTTON_INFO:
-    OnInfo(itemNumber);
-    return true;
-
-  default:
-    break;
   }
   return CGUIMediaWindow::OnContextButton(itemNumber, button);
 }
 
-bool CGUIWindowPrograms::Update(const CStdString &strDirectory, bool updateFilterPath /* = true */)
+bool CGUIWindowPrograms::OnAddMediaSource()
+{
+  return CGUIDialogMediaSource::ShowAndAddMediaSource("programs");
+}
+
+bool CGUIWindowPrograms::Update(const std::string &strDirectory, bool updateFilterPath /* = true */)
 {
   if (m_thumbLoader.IsLoading())
     m_thumbLoader.StopThread();
@@ -174,28 +154,13 @@ bool CGUIWindowPrograms::OnPlayMedia(int iItem)
   return false;
 }
 
-bool CGUIWindowPrograms::GetDirectory(const CStdString &strDirectory, CFileItemList &items)
+std::string CGUIWindowPrograms::GetStartFolder(const std::string &dir)
 {
-  if (!CGUIMediaWindow::GetDirectory(strDirectory, items))
-    return false;
-
-  // don't allow the view state to change these
-  if (strDirectory.Left(9).Equals("addons://"))
-  {
-    for (int i=0;i<items.Size();++i)
-    {
-      items[i]->SetLabel2(items[i]->GetProperty("Addon.Version").asString());
-      items[i]->SetLabelPreformated(true);
-    }
-  }
-
-  return true;
-}
-
-CStdString CGUIWindowPrograms::GetStartFolder(const CStdString &dir)
-{
-  if (dir.Equals("Plugins") || dir.Equals("Addons"))
+  std::string lower(dir); StringUtils::ToLower(lower);
+  if (lower == "plugins" || lower == "addons")
     return "addons://sources/executable/";
+  else if (lower == "androidapps")
+    return "androidapp://sources/apps/";
     
   SetupShares();
   VECSOURCES shares;
@@ -217,7 +182,7 @@ CStdString CGUIWindowPrograms::GetStartFolder(const CStdString &dir)
   return CGUIMediaWindow::GetStartFolder(dir);
 }
 
-void CGUIWindowPrograms::OnInfo(int iItem)
+void CGUIWindowPrograms::OnItemInfo(int iItem)
 {
   if (iItem < 0 || iItem >= m_vecItems->Size())
     return;

@@ -1,11 +1,6 @@
-#ifndef WINDOW_SYSTEM_X11_H
-#define WINDOW_SYSTEM_X11_H
-
-#pragma once
-
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,12 +18,18 @@
  *
  */
 
-#include "system_gl.h"
-#include <GL/glx.h>
+#pragma once
+
+#include <string>
+#include <vector>
 
 #include "windowing/WinSystem.h"
 #include "utils/Stopwatch.h"
 #include "threads/CriticalSection.h"
+#include "threads/SystemClock.h"
+#include "settings/lib/ISettingCallback.h"
+#include "X11/Xlib.h"
+#include "X11/Xutil.h"
 
 class IDispResource;
 
@@ -39,54 +40,69 @@ public:
   virtual ~CWinSystemX11();
 
   // CWinSystemBase
-  virtual bool InitWindowSystem();
-  virtual bool DestroyWindowSystem();
-  virtual bool CreateNewWindow(const CStdString& name, bool fullScreen, RESOLUTION_INFO& res, PHANDLE_EVENT_FUNC userFunction);
-  virtual bool DestroyWindow();
-  virtual bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop);
-  virtual bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays);
-  virtual void UpdateResolutions();
-  virtual int  GetNumScreens() { return 1; }
-  virtual void ShowOSMouse(bool show);
-  virtual void ResetOSScreensaver();
-  virtual bool EnableFrameLimiter();
+  bool InitWindowSystem() override;
+  bool DestroyWindowSystem() override;
+  bool CreateNewWindow(const std::string& name, bool fullScreen, RESOLUTION_INFO& res, PHANDLE_EVENT_FUNC userFunction) override;
+  bool DestroyWindow() override;
+  bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+  bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+  void UpdateResolutions() override;
+  int  GetNumScreens() override { return 1; }
+  int  GetCurrentScreen() override { return m_nScreen; }
+  void ShowOSMouse(bool show) override;
+  void ResetOSScreensaver() override;
+  void EnableSystemScreenSaver(bool bEnable) override;
 
-  virtual void NotifyAppActiveChange(bool bActivated);
+  void NotifyAppActiveChange(bool bActivated) override;
+  void NotifyAppFocusChange(bool bGaining) override;
 
-  virtual bool Minimize();
-  virtual bool Restore() ;
-  virtual bool Hide();
-  virtual bool Show(bool raise = true);
+  bool Minimize() override;
+  bool Restore() override;
+  bool Hide() override;
+  bool Show(bool raise = true) override;
   virtual void Register(IDispResource *resource);
   virtual void Unregister(IDispResource *resource);
+  bool HasCalibration(const RESOLUTION_INFO &resInfo) override;
 
   // Local to WinSystemX11 only
   Display*  GetDisplay() { return m_dpy; }
-  GLXWindow GetWindow() { return m_glWindow; }
+  void NotifyXRREvent();
+  void GetConnectedOutputs(std::vector<std::string> *outputs);
+  bool IsCurrentOutput(std::string output);
+  void RecreateWindow();
+  int GetCrtc() { return m_crtc; }
 
 protected:
-  bool RefreshGlxContext();
-  void CheckDisplayEvents();
+  virtual bool SetWindow(int width, int height, bool fullscreen, const std::string &output, int *winstate = NULL) = 0;
+  virtual XVisualInfo* GetVisual() = 0;
+
   void OnLostDevice();
 
-  SDL_Surface* m_SDLSurface;
-  GLXContext   m_glContext;
-  GLXWindow    m_glWindow;
-  Window       m_wmWindow;
-  Display*     m_dpy;
-  bool         m_bWasFullScreenBeforeMinimize;
-  bool         m_minimized;
-  int          m_RREventBase;
-  CCriticalSection             m_resourceSection;
+  Window m_glWindow, m_mainWindow;
+  Display *m_dpy;
+  Cursor m_invisibleCursor;
+  Pixmap m_icon;
+  bool m_bIsRotated;
+  bool m_bWasFullScreenBeforeMinimize;
+  bool m_minimized;
+  bool m_bIgnoreNextFocusMessage;
+  CCriticalSection m_resourceSection;
   std::vector<IDispResource*>  m_resources;
-  uint64_t                     m_dpyLostTime;
+  bool m_delayDispReset;
+  XbmcThreads::EndTime m_dispResetTimer;
+  std::string m_currentOutput;
+  std::string m_userOutput;
+  bool m_windowDirty;
+  bool m_bIsInternalXrr;
+  int m_MouseX, m_MouseY;
+  int m_crtc;
 
 private:
   bool IsSuitableVisual(XVisualInfo *vInfo);
   static int XErrorHandler(Display* dpy, XErrorEvent* error);
+  bool CreateIconPixmap();
+  bool HasWindowManager();
+  void UpdateCrtc();
 
   CStopWatch m_screensaverReset;
 };
-
-#endif // WINDOW_SYSTEM_H
-

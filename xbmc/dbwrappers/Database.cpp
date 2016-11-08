@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,14 +20,12 @@
 
 #include "Database.h"
 #include "settings/AdvancedSettings.h"
-#include "utils/Crc32.h"
 #include "filesystem/SpecialProtocol.h"
 #include "filesystem/File.h"
 #include "profiles/ProfilesManager.h"
-#include "utils/AutoPtrHandle.h"
 #include "utils/log.h"
 #include "utils/SortUtils.h"
-#include "utils/URIUtils.h"
+#include "utils/StringUtils.h"
 #include "sqlitedataset.h"
 #include "DatabaseManager.h"
 #include "DbUrl.h"
@@ -36,7 +34,10 @@
 #include "mysqldataset.h"
 #endif
 
-using namespace AUTOPTR;
+#ifdef TARGET_POSIX
+#include "linux/ConvUtils.h"
+#endif
+
 using namespace dbiplus;
 
 #define MAX_COMPRESS_COUNT 20
@@ -105,6 +106,7 @@ CDatabase::CDatabase(void)
   m_openCount = 0;
   m_sqlite = true;
   m_bMultiWrite = false;
+  m_multipleExecute = false;
 }
 
 CDatabase::~CDatabase(void)
@@ -112,7 +114,7 @@ CDatabase::~CDatabase(void)
   Close();
 }
 
-void CDatabase::Split(const CStdString& strFileNameAndPath, CStdString& strPath, CStdString& strFileName)
+void CDatabase::Split(const std::string& strFileNameAndPath, std::string& strPath, std::string& strFileName)
 {
   strFileName = "";
   strPath = "";
@@ -123,44 +125,13 @@ void CDatabase::Split(const CStdString& strFileNameAndPath, CStdString& strPath,
     if (ch == ':' || ch == '/' || ch == '\\') break;
     else i--;
   }
-  strPath = strFileNameAndPath.Left(i);
-  strFileName = strFileNameAndPath.Right(strFileNameAndPath.size() - i);
+  strPath = strFileNameAndPath.substr(0, i);
+  strFileName = strFileNameAndPath.substr(i);
 }
 
-uint32_t CDatabase::ComputeCRC(const CStdString &text)
+std::string CDatabase::PrepareSQL(std::string strStmt, ...) const
 {
-  Crc32 crc;
-  crc.ComputeFromLowerCase(text);
-  return crc;
-}
-
-
-CStdString CDatabase::FormatSQL(CStdString strStmt, ...)
-{
-  //  %q is the sqlite format string for %s.
-  //  Any bad character, like "'", will be replaced with a proper one
-  strStmt.Replace("%s", "%q");
-  //  the %I64 enhancement is not supported by sqlite3_vmprintf
-  //  must be %ll instead
-  strStmt.Replace("%I64", "%ll");
-
-  va_list args;
-  va_start(args, strStmt);
-  char *szSql = sqlite3_vmprintf(strStmt.c_str(), args);
-  va_end(args);
-
-  CStdString strResult;
-  if (szSql) {
-    strResult = szSql;
-    sqlite3_free(szSql);
-  }
-
-  return strResult;
-}
-
-CStdString CDatabase::PrepareSQL(CStdString strStmt, ...) const
-{
-  CStdString strResult = "";
+  std::string strResult = "";
 
   if (NULL != m_pDB.get())
   {
@@ -173,7 +144,7 @@ CStdString CDatabase::PrepareSQL(CStdString strStmt, ...) const
   return strResult;
 }
 
-std::string CDatabase::GetSingleValue(const std::string &query, std::auto_ptr<Dataset> &ds)
+std::string CDatabase::GetSingleValue(const std::string &query, std::unique_ptr<Dataset> &ds)
 {
   std::string ret;
   try
@@ -181,7 +152,7 @@ std::string CDatabase::GetSingleValue(const std::string &query, std::auto_ptr<Da
     if (!m_pDB.get() || !ds.get())
       return ret;
 
-    if (ds->query(query.c_str()) && ds->num_rows() > 0)
+    if (ds->query(query) && ds->num_rows() > 0)
       ret = ds->fv(0).get_asString();
 
     ds->close();
@@ -193,9 +164,9 @@ std::string CDatabase::GetSingleValue(const std::string &query, std::auto_ptr<Da
   return ret;
 }
 
-CStdString CDatabase::GetSingleValue(const CStdString &strTable, const CStdString &strColumn, const CStdString &strWhereClause /* = CStdString() */, const CStdString &strOrderBy /* = CStdString() */)
+std::string CDatabase::GetSingleValue(const std::string &strTable, const std::string &strColumn, const std::string &strWhereClause /* = std::string() */, const std::string &strOrderBy /* = std::string() */)
 {
-  CStdString query = PrepareSQL("SELECT %s FROM %s", strColumn.c_str(), strTable.c_str());
+  std::string query = PrepareSQL("SELECT %s FROM %s", strColumn.c_str(), strTable.c_str());
   if (!strWhereClause.empty())
     query += " WHERE " + strWhereClause;
   if (!strOrderBy.empty())
@@ -204,35 +175,56 @@ CStdString CDatabase::GetSingleValue(const CStdString &strTable, const CStdStrin
   return GetSingleValue(query, m_pDS);
 }
 
-CStdString CDatabase::GetSingleValue(const CStdString &query)
+std::string CDatabase::GetSingleValue(const std::string &query)
 {
   return GetSingleValue(query, m_pDS);
 }
 
-bool CDatabase::DeleteValues(const CStdString &strTable, const CStdString &strWhereClause /* = CStdString() */)
+bool CDatabase::DeleteValues(const std::string &strTable, const Filter &filter /* = Filter() */)
 {
-  bool bReturn = true;
-
-  CStdString strQueryBase = "DELETE FROM %s";
-  if (!strWhereClause.IsEmpty())
-    strQueryBase.AppendFormat(" WHERE %s", strWhereClause.c_str());
-
-  CStdString strQuery = FormatSQL(strQueryBase, strTable.c_str());
-
-  bReturn = ExecuteQuery(strQuery);
-
-  return bReturn;
+  std::string strQuery;
+  BuildSQL(PrepareSQL("DELETE FROM %s ", strTable.c_str()), filter, strQuery);
+  return ExecuteQuery(strQuery);
 }
 
-bool CDatabase::ExecuteQuery(const CStdString &strQuery)
+bool CDatabase::BeginMultipleExecute()
 {
+  m_multipleExecute = true;
+  m_multipleQueries.clear();
+  return true;
+}
+
+bool CDatabase::CommitMultipleExecute()
+{
+  m_multipleExecute = false;
+  BeginTransaction();
+  for (std::vector<std::string>::const_iterator i = m_multipleQueries.begin(); i != m_multipleQueries.end(); ++i)
+  {
+    if (!ExecuteQuery(*i))
+    {
+      RollbackTransaction();
+      return false;
+    }
+  }
+  m_multipleQueries.clear();
+  return CommitTransaction();
+}
+
+bool CDatabase::ExecuteQuery(const std::string &strQuery)
+{
+  if (m_multipleExecute)
+  {
+    m_multipleQueries.push_back(strQuery);
+    return true;
+  }
+
   bool bReturn = false;
 
   try
   {
     if (NULL == m_pDB.get()) return bReturn;
     if (NULL == m_pDS.get()) return bReturn;
-    m_pDS->exec(strQuery.c_str());
+    m_pDS->exec(strQuery);
     bReturn = true;
   }
   catch (...)
@@ -244,7 +236,7 @@ bool CDatabase::ExecuteQuery(const CStdString &strQuery)
   return bReturn;
 }
 
-bool CDatabase::ResultQuery(const CStdString &strQuery)
+bool CDatabase::ResultQuery(const std::string &strQuery)
 {
   bool bReturn = false;
 
@@ -253,9 +245,9 @@ bool CDatabase::ResultQuery(const CStdString &strQuery)
     if (NULL == m_pDB.get()) return bReturn;
     if (NULL == m_pDS.get()) return bReturn;
 
-    CStdString strPreparedQuery = PrepareSQL(strQuery.c_str());
+    std::string strPreparedQuery = PrepareSQL(strQuery.c_str());
 
-    bReturn = m_pDS->query(strPreparedQuery.c_str());
+    bReturn = m_pDS->query(strPreparedQuery);
   }
   catch (...)
   {
@@ -266,9 +258,9 @@ bool CDatabase::ResultQuery(const CStdString &strQuery)
   return bReturn;
 }
 
-bool CDatabase::QueueInsertQuery(const CStdString &strQuery)
+bool CDatabase::QueueInsertQuery(const std::string &strQuery)
 {
-  if (strQuery.IsEmpty())
+  if (strQuery.empty())
     return false;
 
   if (!m_bMultiWrite)
@@ -323,14 +315,14 @@ bool CDatabase::Open(const DatabaseSettings &settings)
   }
 
   // check our database manager to see if this database can be opened
-  if (!CDatabaseManager::Get().CanOpen(GetBaseDBName()))
+  if (!CDatabaseManager::GetInstance().CanOpen(GetBaseDBName()))
     return false;
 
   DatabaseSettings dbSettings = settings;
   InitSettings(dbSettings);
 
-  CStdString dbName = dbSettings.name;
-  dbName.AppendFormat("%d", GetMinVersion());
+  std::string dbName = dbSettings.name;
+  dbName += StringUtils::Format("%d", GetSchemaVersion());
   return Connect(dbName, dbSettings, false);
 }
 
@@ -339,107 +331,50 @@ void CDatabase::InitSettings(DatabaseSettings &dbSettings)
   m_sqlite = true;
 
 #ifdef HAS_MYSQL
-  if ( dbSettings.type.Equals("mysql") )
+  if (dbSettings.type == "mysql")
   {
     // check we have all information before we cancel the fallback
-    if ( ! (dbSettings.host.IsEmpty() ||
-            dbSettings.user.IsEmpty() || dbSettings.pass.IsEmpty()) )
+    if ( ! (dbSettings.host.empty() ||
+            dbSettings.user.empty() || dbSettings.pass.empty()) )
       m_sqlite = false;
     else
       CLog::Log(LOGINFO, "Essential mysql database information is missing. Require at least host, user and pass defined.");
   }
   else
 #else
-  if ( dbSettings.type.Equals("mysql") )
+  if (dbSettings.type == "mysql")
     CLog::Log(LOGERROR, "MySQL library requested but MySQL support is not compiled in. Falling back to sqlite3.");
 #endif
   {
     dbSettings.type = "sqlite3";
-    if (dbSettings.host.IsEmpty())
-      dbSettings.host = CSpecialProtocol::TranslatePath(CProfilesManager::Get().GetDatabaseFolder());
+    if (dbSettings.host.empty())
+      dbSettings.host = CSpecialProtocol::TranslatePath(CProfilesManager::GetInstance().GetDatabaseFolder());
   }
 
   // use separate, versioned database
-  if (dbSettings.name.IsEmpty())
+  if (dbSettings.name.empty())
     dbSettings.name = GetBaseDBName();
 }
 
-bool CDatabase::Update(const DatabaseSettings &settings)
+void CDatabase::CopyDB(const std::string& latestDb)
 {
-  DatabaseSettings dbSettings = settings;
-  InitSettings(dbSettings);
-
-  int version = GetMinVersion();
-  CStdString latestDb = dbSettings.name;
-  latestDb.AppendFormat("%d", version);
-
-  while (version >= 0)
-  {
-    CStdString dbName = dbSettings.name;
-    if (version)
-      dbName.AppendFormat("%d", version);
-
-    if (Connect(dbName, dbSettings, false))
-    {
-      // Database exists, take a copy for our current version (if needed) and reopen that one
-      if (version < GetMinVersion())
-      {
-        CLog::Log(LOGNOTICE, "Old database found - updating from version %i to %i", version, GetMinVersion());
-
-        bool copy_fail = false;
-
-        try
-        {
-          m_pDB->copy(latestDb);
-        }
-        catch(...)
-        {
-          CLog::Log(LOGERROR, "Unable to copy old database %s to new version %s", dbName.c_str(), latestDb.c_str());
-          copy_fail = true;
-        }
-
-        Close();
-
-        if ( copy_fail )
-          return false;
-
-        if (!Connect(latestDb, dbSettings, false))
-        {
-          CLog::Log(LOGERROR, "Unable to open freshly copied database %s", latestDb.c_str());
-          return false;
-        }
-      }
-
-      // yay - we have a copy of our db, now do our worst with it
-      if (UpdateVersion(latestDb))
-        return true;
-
-      // update failed - loop around and see if we have another one available
-      Close();
-    }
-
-    // drop back to the previous version and try that
-    version--;
-  }
-  // try creating a new one
-  if (Connect(latestDb, dbSettings, true))
-    return true;
-
-  // failed to update or open the database
-  Close();
-  CLog::Log(LOGERROR, "Unable to create new database");
-  return false;
+  m_pDB->copy(latestDb.c_str());
 }
 
-bool CDatabase::Connect(const CStdString &dbName, const DatabaseSettings &dbSettings, bool create)
+void CDatabase::DropAnalytics()
+{
+  m_pDB->drop_analytics();
+}
+
+bool CDatabase::Connect(const std::string &dbName, const DatabaseSettings &dbSettings, bool create)
 {
   // create the appropriate database structure
-  if (dbSettings.type.Equals("sqlite3"))
+  if (dbSettings.type == "sqlite3")
   {
     m_pDB.reset( new SqliteDatabase() ) ;
   }
 #ifdef HAS_MYSQL
-  else if (dbSettings.type.Equals("mysql"))
+  else if (dbSettings.type == "mysql")
   {
     m_pDB.reset( new MysqlDatabase() ) ;
   }
@@ -453,17 +388,25 @@ bool CDatabase::Connect(const CStdString &dbName, const DatabaseSettings &dbSett
   // host name is always required
   m_pDB->setHostName(dbSettings.host.c_str());
 
-  if (!dbSettings.port.IsEmpty())
+  if (!dbSettings.port.empty())
     m_pDB->setPort(dbSettings.port.c_str());
 
-  if (!dbSettings.user.IsEmpty())
+  if (!dbSettings.user.empty())
     m_pDB->setLogin(dbSettings.user.c_str());
 
-  if (!dbSettings.pass.IsEmpty())
+  if (!dbSettings.pass.empty())
     m_pDB->setPasswd(dbSettings.pass.c_str());
 
   // database name is always required
   m_pDB->setDatabase(dbName.c_str());
+
+  // set configuration regardless if any are empty
+  m_pDB->setConfig(dbSettings.key.c_str(),
+                   dbSettings.cert.c_str(),
+                   dbSettings.ca.c_str(),
+                   dbSettings.capath.c_str(),
+                   dbSettings.ciphers.c_str(),
+                   dbSettings.compression);
 
   // create the datasets
   m_pDS.reset(m_pDB->CreateDataset());
@@ -477,7 +420,7 @@ bool CDatabase::Connect(const CStdString &dbName, const DatabaseSettings &dbSett
     // test if db already exists, if not we need to create the tables
     if (!m_pDB->exists() && create)
     {
-      if (dbSettings.type.Equals("sqlite3"))
+      if (dbSettings.type == "sqlite3")
       {
         //  Modern file systems have a cluster/block size of 4k.
         //  To gain better performance when performing write
@@ -489,11 +432,11 @@ bool CDatabase::Connect(const CStdString &dbName, const DatabaseSettings &dbSett
         //  Also set the memory cache size to 16k
         m_pDS->exec("PRAGMA default_cache_size=4096\n");
       }
-      CreateTables();
+      CreateDatabase();
     }
 
     // sqlite3 post connection operations
-    if (dbSettings.type.Equals("sqlite3"))
+    if (dbSettings.type == "sqlite3")
     {
       m_pDS->exec("PRAGMA cache_size=4096\n");
       m_pDS->exec("PRAGMA synchronous='NORMAL'\n");
@@ -520,44 +463,6 @@ int CDatabase::GetDBVersion()
   return 0;
 }
 
-bool CDatabase::UpdateVersion(const CStdString &dbName)
-{
-  int version = GetDBVersion();
-  if (version < GetMinVersion())
-  {
-    CLog::Log(LOGNOTICE, "Attempting to update the database %s from version %i to %i", dbName.c_str(), version, GetMinVersion());
-    bool success = false;
-    BeginTransaction();
-    try
-    {
-      success = UpdateOldVersion(version);
-      if (success)
-        success = UpdateVersionNumber();
-    }
-    catch (...)
-    {
-      CLog::Log(LOGERROR, "Exception updating database %s from version %i to %i", dbName.c_str(), version, GetMinVersion());
-      success = false;
-    }
-    if (!success)
-    {
-      CLog::Log(LOGERROR, "Error updating database %s from version %i to %i", dbName.c_str(), version, GetMinVersion());
-      RollbackTransaction();
-      return false;
-    }
-    CommitTransaction();
-    CLog::Log(LOGINFO, "Update to version %i successful", GetMinVersion());
-  }
-  else if (version > GetMinVersion())
-  {
-    CLog::Log(LOGERROR, "Can't open the database %s as it is a NEWER version than what we were expecting?", dbName.c_str());
-    return false;
-  }
-  else 
-    CLog::Log(LOGNOTICE, "Running database version %s", dbName.c_str());
-  return true;
-}
-
 bool CDatabase::IsOpen()
 {
   return m_openCount > 0;
@@ -575,6 +480,7 @@ void CDatabase::Close()
   }
 
   m_openCount = 0;
+  m_multipleExecute = false;
 
   if (NULL == m_pDB.get() ) return ;
   if (NULL != m_pDS.get()) m_pDS->close();
@@ -602,8 +508,8 @@ bool CDatabase::Compress(bool bForce /* =true */)
         if (iCount > MAX_COMPRESS_COUNT)
           iCount = -1;
         m_pDS->close();
-        CStdString strSQL=PrepareSQL("update version set iCompressCount=%i\n",++iCount);
-        m_pDS->exec(strSQL.c_str());
+        std::string strSQL=PrepareSQL("update version set iCompressCount=%i\n",++iCount);
+        m_pDS->exec(strSQL);
         if (iCount != 0)
           return true;
       }
@@ -672,25 +578,36 @@ bool CDatabase::InTransaction()
   return m_pDB->in_transaction();
 }
 
-bool CDatabase::CreateTables()
+bool CDatabase::CreateDatabase()
 {
-
+  BeginTransaction();
+  try
+  {
     CLog::Log(LOGINFO, "creating version table");
     m_pDS->exec("CREATE TABLE version (idVersion integer, iCompressCount integer)\n");
-    CStdString strSQL=PrepareSQL("INSERT INTO version (idVersion,iCompressCount) values(%i,0)\n", GetMinVersion());
-    m_pDS->exec(strSQL.c_str());
+    std::string strSQL=PrepareSQL("INSERT INTO version (idVersion,iCompressCount) values(%i,0)\n", GetSchemaVersion());
+    m_pDS->exec(strSQL);
 
-    return true;
+    CreateTables();
+    CreateAnalytics();
+  }
+  catch (...)
+  {
+    CLog::Log(LOGERROR, "%s unable to create database:%i", __FUNCTION__, (int)GetLastError());
+    RollbackTransaction();
+    return false;
+  }
+
+  return CommitTransaction();
 }
 
-bool CDatabase::UpdateVersionNumber()
+void CDatabase::UpdateVersionNumber()
 {
-  CStdString strSQL=PrepareSQL("UPDATE version SET idVersion=%i\n", GetMinVersion());
-  m_pDS->exec(strSQL.c_str());
-  return true;
+  std::string strSQL=PrepareSQL("UPDATE version SET idVersion=%i\n", GetSchemaVersion());
+  m_pDS->exec(strSQL);
 }
 
-bool CDatabase::BuildSQL(const CStdString &strQuery, const Filter &filter, CStdString &strSQL)
+bool CDatabase::BuildSQL(const std::string &strQuery, const Filter &filter, std::string &strSQL)
 {
   strSQL = strQuery;
 
@@ -708,13 +625,13 @@ bool CDatabase::BuildSQL(const CStdString &strQuery, const Filter &filter, CStdS
   return true;
 }
 
-bool CDatabase::BuildSQL(const CStdString &strBaseDir, const CStdString &strQuery, Filter &filter, CStdString &strSQL, CDbUrl &dbUrl)
+bool CDatabase::BuildSQL(const std::string &strBaseDir, const std::string &strQuery, Filter &filter, std::string &strSQL, CDbUrl &dbUrl)
 {
   SortDescription sorting;
   return BuildSQL(strBaseDir, strQuery, filter, strSQL, dbUrl, sorting);
 }
 
-bool CDatabase::BuildSQL(const CStdString &strBaseDir, const CStdString &strQuery, Filter &filter, CStdString &strSQL, CDbUrl &dbUrl, SortDescription &sorting /* = SortDescription() */)
+bool CDatabase::BuildSQL(const std::string &strBaseDir, const std::string &strQuery, Filter &filter, std::string &strSQL, CDbUrl &dbUrl, SortDescription &sorting /* = SortDescription() */)
 {
   // parse the base path to get additional filters
   dbUrl.Reset();

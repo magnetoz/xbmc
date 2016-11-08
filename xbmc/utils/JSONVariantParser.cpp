@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
@@ -38,33 +38,28 @@ CJSONVariantParser::CJSONVariantParser(IParseCallback *callback)
 {
   m_callback = callback;
 
-#if YAJL_MAJOR == 2
   m_handler = yajl_alloc(&callbacks, NULL, this);
 
   yajl_config(m_handler, yajl_allow_comments, 1);
   yajl_config(m_handler, yajl_dont_validate_strings, 0);
-#else
-  yajl_parser_config cfg = { 1, 1 };
-
-  m_handler = yajl_alloc(&callbacks, &cfg, NULL, this);
-#endif
 
   m_status = ParseVariable;
 }
 
 CJSONVariantParser::~CJSONVariantParser()
 {
-#if YAJL_MAJOR == 2
   yajl_complete_parse(m_handler);
-#else
-  yajl_parse_complete(m_handler);
-#endif
   yajl_free(m_handler);
 }
 
 void CJSONVariantParser::push_buffer(const unsigned char *buffer, unsigned int length)
 {
   yajl_parse(m_handler, buffer, length);
+}
+
+CVariant CJSONVariantParser::Parse(const std::string& json)
+{
+  return Parse(reinterpret_cast<const unsigned char*>(json.c_str()), json.length());
 }
 
 CVariant CJSONVariantParser::Parse(const unsigned char *json, unsigned int length)
@@ -97,11 +92,7 @@ int CJSONVariantParser::ParseBoolean(void * ctx, int boolean)
   return 1;
 }
 
-#if YAJL_MAJOR ==2
 int CJSONVariantParser::ParseInteger(void * ctx, long long integerVal)
-#else
-int CJSONVariantParser::ParseInteger(void * ctx, long integerVal)
-#endif
 {
   CJSONVariantParser *parser = (CJSONVariantParser *)ctx;
 
@@ -121,11 +112,7 @@ int CJSONVariantParser::ParseDouble(void * ctx, double doubleVal)
   return 1;
 }
 
-#if YAJL_MAJOR == 2
 int CJSONVariantParser::ParseString(void * ctx, const unsigned char * stringVal, size_t stringLen)
-#else
-int CJSONVariantParser::ParseString(void * ctx, const unsigned char * stringVal, unsigned int stringLen)
-#endif
 {
   CJSONVariantParser *parser = (CJSONVariantParser *)ctx;
 
@@ -144,11 +131,7 @@ int CJSONVariantParser::ParseMapStart(void * ctx)
   return 1;
 }
 
-#if YAJL_MAJOR == 2
 int CJSONVariantParser::ParseMapKey(void * ctx, const unsigned char * stringVal, size_t stringLen)
-#else
-int CJSONVariantParser::ParseMapKey(void * ctx, const unsigned char * stringVal, unsigned int stringLen)
-#endif
 {
   CJSONVariantParser *parser = (CJSONVariantParser *)ctx;
 
@@ -197,7 +180,7 @@ void CJSONVariantParser::PushObject(CVariant variant)
     temp->push_back(variant);
     m_parse.push_back(&(*temp)[temp->size() - 1]);
   }
-  else if (m_parse.size() == 0)
+  else if (m_parse.empty())
   {
     m_parse.push_back(new CVariant(variant));
   }

@@ -1,7 +1,6 @@
-#pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,9 +17,12 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+#pragma once
 
 #include <memory>
 #include <map>
+#include <string>
+#include <vector>
 
 #include "network/ZeroconfBrowser.h"
 #include "threads/Thread.h"
@@ -43,8 +45,8 @@ public:
 private:
   ///implementation if CZeroconfBrowser interface
   ///@{
-  virtual bool doAddServiceType(const CStdString &fcr_service_type);
-  virtual bool doRemoveServiceType(const CStdString &fcr_service_type);
+  virtual bool doAddServiceType(const std::string &fcr_service_type);
+  virtual bool doRemoveServiceType(const std::string &fcr_service_type);
 
   virtual std::vector<CZeroconfBrowser::ZeroconfService> doGetFoundServices();
   virtual bool doResolveService(CZeroconfBrowser::ZeroconfService &fr_service, double f_timeout);
@@ -64,10 +66,10 @@ private:
   CFRunLoopRef m_runloop;
   
   //shared variables (with guard)
-  //TODO: split the guard for discovered, resolved access?
+  //! @todo split the guard for discovered, resolved access?
   CCriticalSection m_data_guard;
   // tBrowserMap maps service types the corresponding browser
-  typedef std::map<CStdString, CFNetServiceBrowserRef> tBrowserMap;
+  typedef std::map<std::string, CFNetServiceBrowserRef> tBrowserMap;
   tBrowserMap m_service_browsers;
   //tDiscoveredServicesMap maps browsers to their discovered services + a ref-count for each service
   //ref-count is needed, because a service might pop up more than once, if there's more than one network-iface

@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,15 +22,14 @@
 
 #include "ICodec.h"
 
+class CFileItem;
+
 class CodecFactory
 {
 public:
   CodecFactory() {}
   virtual ~CodecFactory() {}
-
-  static ICodec* CreateCodec(const CStdString& strFileType);
-  static ICodec* CreateCodecDemux(const CStdString& strFile, const CStdString& strContent,unsigned int filecache);
-private:
-  static ICodec* CreateOGGCodec(const CStdString& strFile, unsigned int filecache);
+  static ICodec* CreateCodec(const std::string &type);
+  static ICodec* CreateCodecDemux(const CFileItem& file, unsigned int filecache);
 };
 

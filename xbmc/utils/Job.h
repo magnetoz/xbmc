@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -106,7 +106,8 @@ public:
    \sa CJobManager
    */
   enum PRIORITY {
-    PRIORITY_LOW = 0,
+    PRIORITY_LOW_PAUSABLE = 0,
+    PRIORITY_LOW,
     PRIORITY_NORMAL,
     PRIORITY_HIGH
   };
@@ -162,7 +163,7 @@ public:
    
    \sa IJobCallback::OnJobProgress()
    */
-  bool ShouldCancel(unsigned int progress, unsigned int total) const;
+  virtual bool ShouldCancel(unsigned int progress, unsigned int total) const;
 private:
   friend class CJobManager;
   CJobManager *m_callback;

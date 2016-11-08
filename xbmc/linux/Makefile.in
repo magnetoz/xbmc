@@ -4,7 +4,7 @@ SRCS  = ConvUtils.cpp
 SRCS += DBusUtil.cpp
 SRCS += DBusMessage.cpp
 SRCS += DBusReserve.cpp
-SRCS += HALManager.cpp
+SRCS += FDEventMonitor.cpp
 SRCS += LinuxResourceCounter.cpp
 SRCS += LinuxTimezone.cpp
 SRCS += PosixMountProvider.cpp
@@ -14,6 +14,8 @@ SRCS += XMemUtils.cpp
 SRCS += XTimeUtils.cpp
 
 SRCS += RBP.cpp
+
+SRCS += $(wildcard @CORE_SYSTEM_VARIANT@/*.cpp)
 
 ifeq (@USE_OMXLIB@,1)
 SRCS += OMXClock.cpp

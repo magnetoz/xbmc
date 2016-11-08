@@ -15,7 +15,7 @@ CPPFLAGS="-I@prefix@/@tool_dir@/include $CPPFLAGS"
 CXXFLAGS="-I@prefix@/@tool_dir@/include $CXXFLAGS"
 
 PKG_CONFIG=@prefix@/@tool_dir@/bin/pkg-config
-export PKG_CONFIG_PATH=@prefix@/@tool_dir@/lib/pkgconfig
+export PKG_CONFIG_LIBDIR=@prefix@/@tool_dir@/lib/pkgconfig
 
 PATH=@prefix@/@tool_dir@/bin:$PATH
 if test -n "@use_build_toolchain@"; then
@@ -24,3 +24,12 @@ fi
 
 LD_LIBRARY_PATH=@prefix@/@tool_dir@/lib:$LD_LIBRARY_PATH
 NASM=@prefix@/@tool_dir@/bin/yasm
+
+if test "@platform_os@" = "osx" ; then
+  # Xcode 8 + 10.11, clock_gettime and getentropy is present
+  # in 10.12 but will get wrongly detected if building on 10.11
+  ac_cv_search_clock_gettime=no
+  ac_cv_func_clock_gettime=no
+  ac_cv_func_getentropy=no
+fi
+

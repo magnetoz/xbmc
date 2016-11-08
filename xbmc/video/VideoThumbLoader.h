@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,12 +20,12 @@
  */
 
 #include <map>
+#include <vector>
 #include "ThumbLoader.h"
 #include "utils/JobManager.h"
 #include "FileItem.h"
 
 class CStreamDetails;
-class IStreamDetailsObserver;
 class CVideoDatabase;
 
 /*!
@@ -39,7 +39,7 @@ class CVideoDatabase;
 class CThumbExtractor : public CJob
 {
 public:
-  CThumbExtractor(const CFileItem& item, const CStdString& listpath, bool thumb, const CStdString& strTarget="");
+  CThumbExtractor(const CFileItem& item, const std::string& listpath, bool thumb, const std::string& strTarget="", int64_t pos = -1, bool fillStreamDetails = true);
   virtual ~CThumbExtractor();
 
   /*!
@@ -54,10 +54,12 @@ public:
 
   virtual bool operator==(const CJob* job) const;
 
-  CStdString m_target; ///< thumbpath
-  CStdString m_listpath; ///< path used in fileitem list
+  std::string m_target; ///< thumbpath
+  std::string m_listpath; ///< path used in fileitem list
   CFileItem  m_item;
   bool       m_thumb; ///< extract thumb?
+  int64_t    m_pos; ///< position to extract thumb from
+  bool m_fillStreamDetails; ///< fill in stream details? 
 };
 
 class CVideoThumbLoader : public CThumbLoader, public CJobQueue
@@ -66,9 +68,12 @@ public:
   CVideoThumbLoader();
   virtual ~CVideoThumbLoader();
 
-  virtual void Initialize();
+  virtual void OnLoaderStart();
+  virtual void OnLoaderFinish();
+
   virtual bool LoadItem(CFileItem* pItem);
-  void SetStreamDetailsObserver(IStreamDetailsObserver *pObs) { m_pStreamDetailsObs = pObs; }
+  virtual bool LoadItemCached(CFileItem* pItem);
+  virtual bool LoadItemLookup(CFileItem* pItem);
 
   /*! \brief Fill the thumb of a video item
    First uses a cached thumb from a previous run, then checks for a local thumb
@@ -76,7 +81,7 @@ public:
    \param item the CFileItem object to fill
    \return true if we fill the thumb, false otherwise
    */
-  static bool FillThumb(CFileItem &item);
+  virtual bool FillThumb(CFileItem &item);
 
   /*! \brief Find a particular art type for a given item, optionally checking at the folder level
    \param item the CFileItem to search.
@@ -97,7 +102,7 @@ public:
    \param item a video CFileItem.
    \return a URL for the embedded thumb.
    */
-  static CStdString GetEmbeddedThumbURL(const CFileItem &item);
+  static std::string GetEmbeddedThumbURL(const CFileItem &item);
 
   /*! \brief helper function to fill the art for a video library item
    \param item a video CFileItem
@@ -122,11 +127,14 @@ public:
   static void SetArt(CFileItem &item, const std::map<std::string, std::string> &artwork);
 
 protected:
-  virtual void OnLoaderStart();
-  virtual void OnLoaderFinish();
-
-  IStreamDetailsObserver *m_pStreamDetailsObs;
-  CVideoDatabase *m_database;
+  CVideoDatabase *m_videoDatabase;
   typedef std::map<int, std::map<std::string, std::string> > ArtCache;
   ArtCache m_showArt;
+  ArtCache m_seasonArt;
+
+  /*! \brief Tries to detect missing data/info from a file and adds those
+   \param item The CFileItem to process
+   \return void
+   */
+  void DetectAndAddMissingItemData(CFileItem &item);
 };

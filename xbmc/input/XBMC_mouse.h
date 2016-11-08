@@ -1,3 +1,5 @@
+#pragma once
+
 /*
     SDL - Simple DirectMedia Layer
     Copyright (C) 1997-2009 Sam Lantinga
@@ -12,18 +14,15 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
     Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU General Public License
+    along with Kodi; see the file COPYING.  If not, see
+    <http://www.gnu.org/licenses/>.
 
     Sam Lantinga
     slouken@libsdl.org
 */
 
 /* Include file for SDL mouse event handling */
-
-#ifndef _XBMC_mouse_h
-#define _XBMC_mouse_h
 
 /* Useful data types */
 typedef struct XBMC_Rect {
@@ -42,4 +41,3 @@ typedef struct XBMC_Cursor {
 	WMcursor *wm_cursor;		/* Window-manager cursor */
 } XBMC_Cursor;
 
-#endif /* _XBMC_mouse_h */

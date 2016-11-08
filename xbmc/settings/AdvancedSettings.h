@@ -19,12 +19,23 @@
  *
  */
 
+#include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "settings/ISettingCallback.h"
-#include "settings/ISettingsHandler.h"
-#include "utils/StdString.h"
+#include "pictures/PictureScalingAlgorithm.h"
+#include "settings/lib/ISettingCallback.h"
+#include "settings/lib/ISettingsHandler.h"
 #include "utils/GlobalsHandling.h"
+
+#define CACHE_BUFFER_MODE_INTERNET      0
+#define CACHE_BUFFER_MODE_ALL           1
+#define CACHE_BUFFER_MODE_TRUE_INTERNET 2
+#define CACHE_BUFFER_MODE_NONE          3
+#define CACHE_BUFFER_MODE_REMOTE        4
+
+class CVariant;
 
 class TiXmlElement;
 namespace ADDON
@@ -35,6 +46,7 @@ namespace ADDON
 class DatabaseSettings
 {
 public:
+  DatabaseSettings() { Reset(); }
   void Reset()
   {
     type.clear();
@@ -43,24 +55,36 @@ public:
     user.clear();
     pass.clear();
     name.clear();
+    key.clear();
+    cert.clear();
+    ca.clear();
+    capath.clear();
+    ciphers.clear();
+    compression = false;
   };
-  CStdString type;
-  CStdString host;
-  CStdString port;
-  CStdString user;
-  CStdString pass;
-  CStdString name;
+  std::string type;
+  std::string host;
+  std::string port;
+  std::string user;
+  std::string pass;
+  std::string name;
+  std::string key;
+  std::string cert;
+  std::string ca;
+  std::string capath;
+  std::string ciphers;
+  bool compression;
 };
 
 struct TVShowRegexp
 {
   bool byDate;
-  CStdString regexp;
+  std::string regexp;
   int defaultSeason;
-  TVShowRegexp(bool d, const CStdString& r, int s = 1)
+  TVShowRegexp(bool d, const std::string& r, int s = 1):
+    regexp(r)
   {
     byDate = d;
-    regexp = r;
     defaultSeason = s;
   }
 };
@@ -94,47 +118,36 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
 
     static CAdvancedSettings* getInstance();
 
-    virtual void OnSettingsLoaded();
+    virtual void OnSettingsLoaded() override;
+    virtual void OnSettingsUnloaded() override;
 
-    virtual void OnSettingChanged(const CSetting *setting);
-
-    virtual void OnSettingAction(const CSetting *setting);
+    virtual void OnSettingChanged(const CSetting *setting) override;
 
     void Initialize();
     bool Initialized() { return m_initialized; };
-    void AddSettingsFile(const CStdString &filename);
+    void AddSettingsFile(const std::string &filename);
     bool Load();
     void Clear();
 
     static void GetCustomTVRegexps(TiXmlElement *pRootElement, SETTINGS_TVSHOWLIST& settings);
-    static void GetCustomRegexps(TiXmlElement *pRootElement, CStdStringArray& settings);
-    static void GetCustomRegexpReplacers(TiXmlElement *pRootElement, CStdStringArray& settings);
-    static void GetCustomExtensions(TiXmlElement *pRootElement, CStdString& extensions);
+    static void GetCustomRegexps(TiXmlElement *pRootElement, std::vector<std::string> &settings);
+    static void GetCustomExtensions(TiXmlElement *pRootElement, std::string& extensions);
+
+    bool CanLogComponent(int component) const;
+    static void SettingOptionsLoggingComponentsFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current, void *data);
 
     int m_audioHeadRoom;
     float m_ac3Gain;
-    CStdString m_audioDefaultPlayer;
+    std::string m_audioDefaultPlayer;
     float m_audioPlayCountMinimumPercent;
-    bool m_dvdplayerIgnoreDTSinWAV;
-    int m_audioResample;
-    bool m_allowTranscode44100;
-    bool m_audioForceDirectSound;
-    bool m_audioAudiophile;
-    bool m_allChannelStereo;
-    bool m_streamSilence;
-    int m_audioSinkBufferDurationMsec;
-    CStdString m_audioTranscodeTo;
+    bool m_VideoPlayerIgnoreDTSinWAV;
     float m_limiterHold;
     float m_limiterRelease;
 
-    bool  m_omxHWAudioDecode;
     bool  m_omxDecodeStartWithValidFrame;
 
     float m_videoSubsDelayRange;
     float m_videoAudioDelayRange;
-    int m_videoSmallStepBackSeconds;
-    int m_videoSmallStepBackTries;
-    int m_videoSmallStepBackDelay;
     bool m_videoUseTimeSeeking;
     int m_videoTimeSeekForward;
     int m_videoTimeSeekBackward;
@@ -144,8 +157,11 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_videoPercentSeekBackward;
     int m_videoPercentSeekForwardBig;
     int m_videoPercentSeekBackwardBig;
-    CStdString m_videoPPFFmpegDeint;
-    CStdString m_videoPPFFmpegPostProc;
+    std::vector<int> m_seekSteps;
+    std::string m_videoPPFFmpegDeint;
+    std::string m_videoPPFFmpegPostProc;
+    bool m_videoVDPAUtelecine;
+    bool m_videoVDPAUdeintSkipChromaHD;
     bool m_musicUseTimeSeeking;
     int m_musicTimeSeekForward;
     int m_musicTimeSeekBackward;
@@ -155,32 +171,29 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_musicPercentSeekBackward;
     int m_musicPercentSeekForwardBig;
     int m_musicPercentSeekBackwardBig;
-    int m_videoBlackBarColour;
     int m_videoIgnoreSecondsAtStart;
     float m_videoIgnorePercentAtEnd;
-    CStdString m_audioHost;
-    bool m_audioApplyDrc;
+    float m_audioApplyDrc;
+    bool m_useFfmpegVda;
 
-    bool  m_videoVDPAUScaling;
+    int   m_videoVDPAUScaling;
+    bool  m_videoVAAPIforced;
     float m_videoNonLinStretchRatio;
     bool  m_videoEnableHighQualityHwScalers;
     float m_videoAutoScaleMaxFps;
-    bool  m_videoAllowMpeg4VDPAU;
-    bool  m_videoAllowMpeg4VAAPI;
     std::vector<RefreshOverride> m_videoAdjustRefreshOverrides;
     std::vector<RefreshVideoLatency> m_videoRefreshLatency;
     float m_videoDefaultLatency;
-    bool m_videoDisableBackgroundDeinterlace;
     int  m_videoCaptureUseOcclusionQuery;
     bool m_DXVACheckCompatibility;
     bool m_DXVACheckCompatibilityPresent;
     bool m_DXVAForceProcessorRenderer;
-    bool m_DXVANoDeintProcForProgressive;
+    bool m_DXVAAllowHqScaling;
     int  m_videoFpsDetect;
-    bool m_videoDisableHi10pMultithreading;
+    int  m_videoBusyDialogDelay_ms;
+    bool m_mediacodecForceSoftwareRendring;
 
-    CStdString m_videoDefaultPlayer;
-    CStdString m_videoDefaultDVDPlayer;
+    std::string m_videoDefaultPlayer;
     float m_videoPlayCountMinimumPercent;
 
     float m_slideshowBlackBarCompensation;
@@ -190,32 +203,33 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_songInfoDuration;
     int m_logLevel;
     int m_logLevelHint;
+    bool m_extraLogEnabled;
     int m_extraLogLevels;
-    CStdString m_cddbAddress;
+    std::string m_cddbAddress;
 
     //airtunes + airplay
-    bool m_logEnableAirtunes;
     int m_airTunesPort;
     int m_airPlayPort;
 
     bool m_handleMounting;
 
     bool m_fullScreenOnMovieStart;
-    CStdString m_cachePath;
-    CStdString m_videoCleanDateTimeRegExp;
-    CStdStringArray m_videoCleanStringRegExps;
-    CStdStringArray m_videoExcludeFromListingRegExps;
-    CStdStringArray m_moviesExcludeFromScanRegExps;
-    CStdStringArray m_tvshowExcludeFromScanRegExps;
-    CStdStringArray m_audioExcludeFromListingRegExps;
-    CStdStringArray m_audioExcludeFromScanRegExps;
-    CStdStringArray m_pictureExcludeFromListingRegExps;
-    CStdStringArray m_videoStackRegExps;
-    CStdStringArray m_folderStackRegExps;
-    CStdStringArray m_trailerMatchRegExps;
+    std::string m_cachePath;
+    std::string m_videoCleanDateTimeRegExp;
+    std::vector<std::string> m_videoCleanStringRegExps;
+    std::vector<std::string> m_videoExcludeFromListingRegExps;
+    std::vector<std::string> m_allExcludeFromScanRegExps;
+    std::vector<std::string> m_moviesExcludeFromScanRegExps;
+    std::vector<std::string> m_tvshowExcludeFromScanRegExps;
+    std::vector<std::string> m_audioExcludeFromListingRegExps;
+    std::vector<std::string> m_audioExcludeFromScanRegExps;
+    std::vector<std::string> m_pictureExcludeFromListingRegExps;
+    std::vector<std::string> m_videoStackRegExps;
+    std::vector<std::string> m_folderStackRegExps;
+    std::vector<std::string> m_trailerMatchRegExps;
     SETTINGS_TVSHOWLIST m_tvshowEnumRegExps;
-    CStdString m_tvshowMultiPartEnumRegExp;
-    typedef std::vector< std::pair<CStdString, CStdString> > StringMapping;
+    std::string m_tvshowMultiPartEnumRegExp;
+    typedef std::vector< std::pair<std::string, std::string> > StringMapping;
     StringMapping m_pathSubstitutions;
     int m_remoteDelay; ///< \brief number of remote messages to ignore before repeating
     float m_controllerDeadzone;
@@ -225,39 +239,34 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
 
     unsigned int m_fanartRes; ///< \brief the maximal resolution to cache fanart at (assumes 16x9)
     unsigned int m_imageRes;  ///< \brief the maximal resolution to cache images at (assumes 16x9)
-    /*! \brief the maximal size to cache thumbs at, assuming square
-     Used for actual thumbs (eg bookmark thumbs, picture thumbs) rather than cover art which uses m_imageRes instead
-     */
-    unsigned int GetThumbSize() const { return m_imageRes / 2; };
-    bool m_useDDSFanart;
+    CPictureScalingAlgorithm::Algorithm m_imageScalingAlgorithm;
 
     int m_sambaclienttimeout;
-    CStdString m_sambadoscodepage;
+    std::string m_sambadoscodepage;
     bool m_sambastatfiles;
 
     bool m_bHTTPDirectoryStatFilesize;
 
     bool m_bFTPThumbs;
 
-    CStdString m_musicThumbs;
-    CStdString m_fanartImages;
+    std::string m_musicThumbs;
+    std::string m_fanartImages;
 
-    bool m_bMusicLibraryHideAllItems;
     int m_iMusicLibraryRecentlyAddedItems;
+    int m_iMusicLibraryDateAdded;
     bool m_bMusicLibraryAllItemsOnBottom;
-    bool m_bMusicLibraryAlbumsSortByArtistThenYear;
-    CStdString m_strMusicLibraryAlbumFormat;
-    CStdString m_strMusicLibraryAlbumFormatRight;
+    bool m_bMusicLibraryCleanOnUpdate;
+    std::string m_strMusicLibraryAlbumFormat;
     bool m_prioritiseAPEv2tags;
-    CStdString m_musicItemSeparator;
-    CStdString m_videoItemSeparator;
-    std::vector<CStdString> m_musicTagsFromFileFilters;
+    std::string m_musicItemSeparator;
+    std::vector<std::string> m_musicArtistSeparators;
+    std::string m_videoItemSeparator;
+    std::vector<std::string> m_musicTagsFromFileFilters;
 
-    bool m_bVideoLibraryHideAllItems;
     bool m_bVideoLibraryAllItemsOnBottom;
     int m_iVideoLibraryRecentlyAddedItems;
-    bool m_bVideoLibraryHideEmptySeries;
     bool m_bVideoLibraryCleanOnUpdate;
+    bool m_bVideoLibraryUseFastHash;
     bool m_bVideoLibraryExportAutoThumbs;
     bool m_bVideoLibraryImportWatchedState;
     bool m_bVideoLibraryImportResumePoint;
@@ -265,21 +274,7 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     bool m_bVideoScannerIgnoreErrors;
     int m_iVideoLibraryDateAdded;
 
-    std::vector<CStdString> m_vecTokens; // cleaning strings tied to language
-    //TuxBox
-    int m_iTuxBoxStreamtsPort;
-    bool m_bTuxBoxSubMenuSelection;
-    int m_iTuxBoxDefaultSubMenu;
-    int m_iTuxBoxDefaultRootMenu;
-    bool m_bTuxBoxAudioChannelSelection;
-    bool m_bTuxBoxPictureIcon;
-    int m_iTuxBoxEpgRequestTime;
-    int m_iTuxBoxZapWaitTime;
-    bool m_bTuxBoxSendAllAPids;
-    bool m_bTuxBoxZapstream;
-    int m_iTuxBoxZapstreamPort;
-
-    int m_iMythMovieLength;         // minutes
+    std::set<std::string> m_vecTokens;
 
     int m_iEpgLingerTime;           // minutes
     int m_iEpgUpdateCheckInterval;  // seconds
@@ -299,7 +294,6 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_iEdlCommBreakAutowait;    // seconds
     int m_iEdlCommBreakAutowind;    // seconds
 
-    bool m_bFirstLoop;
     int m_curlconnecttimeout;
     int m_curllowspeedtime;
     int m_curlretries;
@@ -315,78 +309,83 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     int m_playlistTimeout;
     bool m_GLRectangleHack;
     int m_iSkipLoopFilter;
-    float m_ForcedSwapTime; /* if nonzero, set's the explicit time in ms to allocate for buffer swap */
 
-    bool m_AllowD3D9Ex;
-    bool m_ForceD3D9Ex;
-    bool m_AllowDynamicTextures;
     unsigned int m_RestrictCapsMask;
     float m_sleepBeforeFlip; ///< if greather than zero, XBMC waits for raster to be this amount through the frame prior to calling the flip
     bool m_bVirtualShares;
+    bool m_bAllowDeferredRendering;
 
-    float m_karaokeSyncDelayCDG; // seems like different delay is needed for CDG and MP3s
-    float m_karaokeSyncDelayLRC;
-    bool m_karaokeChangeGenreForKaraokeSongs;
-    bool m_karaokeKeepDelay; // store user-changed song delay in the database
-    int m_karaokeStartIndex; // auto-assign numbering start from this value
-    bool m_karaokeAlwaysEmptyOnCdgs; // always have empty background on CDG files
-    bool m_karaokeUseSongSpecificBackground; // use song-specific video or image if available instead of default
-    CStdString m_karaokeDefaultBackgroundType; // empty string or "vis", "image" or "video"
-    CStdString m_karaokeDefaultBackgroundFilePath; // only for "image" or "video" types above
+    std::string m_cpuTempCmd;
+    std::string m_gpuTempCmd;
 
-    CStdString m_cpuTempCmd;
-    CStdString m_gpuTempCmd;
-    int m_bgInfoLoaderMaxThreads;
+    // Touchscreen
+    int m_screenAlign_xOffset;
+    int m_screenAlign_yOffset;
+    float m_screenAlign_xStretchFactor;
+    float m_screenAlign_yStretchFactor;
 
     /* PVR/TV related advanced settings */
     int m_iPVRTimeCorrection;     /*!< @brief correct all times (epg tags, timer tags, recording tags) by this amount of minutes. defaults to 0. */
     int m_iPVRInfoToggleInterval; /*!< @brief if there are more than 1 pvr gui info item available (e.g. multiple recordings active at the same time), use this toggle delay in milliseconds. defaults to 3000. */
-    bool m_bPVRShowEpgInfoOnEpgItemSelect; /*!< @brief when selecting an EPG fileitem, show the EPG info dialog if this setting is true. start playback on the selected channel if false */
-    int m_iPVRMinVideoCacheLevel;      /*!< @brief cache up to this level in the video buffer buffer before resuming playback if the buffers run dry */
-    int m_iPVRMinAudioCacheLevel;      /*!< @brief cache up to this level in the audio buffer before resuming playback if the buffers run dry */
-    bool m_bPVRCacheInDvdPlayer; /*!< @brief true to use "CACHESTATE_PVR" in CDVDPlayer (default) */
     bool m_bPVRChannelIconsAutoScan; /*!< @brief automatically scan user defined folder for channel icons when loading internal channel groups */
     bool m_bPVRAutoScanIconsUserSet; /*!< @brief mark channel icons populated by auto scan as "user set" */
     int m_iPVRNumericChannelSwitchTimeout; /*!< @brief time in ms before the numeric dialog auto closes when confirmchannelswitch is disabled */
-
-    bool m_measureRefreshrate; //when true the videoreferenceclock will measure the refreshrate when direct3d is used
-                               //otherwise it will use the windows refreshrate
 
     DatabaseSettings m_databaseMusic; // advanced music database setup
     DatabaseSettings m_databaseVideo; // advanced video database setup
     DatabaseSettings m_databaseTV;    // advanced tv database setup
     DatabaseSettings m_databaseEpg;   /*!< advanced EPG database setup */
+    DatabaseSettings m_databaseADSP;  /*!< advanced audio dsp database setup */
 
     bool m_guiVisualizeDirtyRegions;
     int  m_guiAlgorithmDirtyRegions;
-    int  m_guiDirtyRegionNoFlipTimeout;
     unsigned int m_addonPackageFolderSize;
 
-    unsigned int m_cacheMemBufferSize;
+    unsigned int m_cacheMemSize;
+    unsigned int m_cacheBufferMode;
+    float m_cacheReadFactor;
 
     bool m_jsonOutputCompact;
     unsigned int m_jsonTcpPort;
 
     bool m_enableMultimediaKeys;
-    std::vector<CStdString> m_settingsFiles;
-    void ParseSettingsFile(const CStdString &file);
+    std::vector<std::string> m_settingsFiles;
+    void ParseSettingsFile(const std::string &file);
 
     float GetDisplayLatency(float refreshrate);
     bool m_initialized;
-    bool m_loaded;
+
+    //! \brief Returns a list of music extension for filtering in the GUI
+    std::string GetMusicExtensions() const;
 
     void SetDebugMode(bool debug);
-    void SetExtraLogsFromAddon(ADDON::IAddon* addon);
+
+    //! \brief Toggles dirty-region visualization
+    void ToggleDirtyRegionVisualization() { m_guiVisualizeDirtyRegions = !m_guiVisualizeDirtyRegions; };
 
     // runtime settings which cannot be set from advancedsettings.xml
-    CStdString m_pictureExtensions;
-    CStdString m_musicExtensions;
-    CStdString m_videoExtensions;
-    CStdString m_discStubExtensions;
+    std::string m_pictureExtensions;
+    std::string m_videoExtensions;
+    std::string m_discStubExtensions;
+    std::string m_subtitlesExtensions;
 
-    CStdString m_logFolder;
+    std::string m_stereoscopicregex_3d;
+    std::string m_stereoscopicregex_sbs;
+    std::string m_stereoscopicregex_tab;
 
-    CStdString m_userAgent;
+    bool m_useDisplayControlHWStereo;
+
+    /*!< @brief position behavior of ass subtitiles when setting "subtitle position on screen" set to "fixed"
+    True to show at the fixed position set in video calibration
+    False to show at the bottom of video (default) */
+    bool m_videoAssFixedWorks;
+
+    std::string m_userAgent;
+
+  private:
+    std::string m_musicExtensions;
+    void setExtraLogLevel(const std::vector<CVariant> &components);
 };
 
-XBMC_GLOBAL(CAdvancedSettings,g_advancedSettings);
+XBMC_GLOBAL_REF(CAdvancedSettings,g_advancedSettings);
+#define g_advancedSettings XBMC_GLOBAL_USE(CAdvancedSettings)

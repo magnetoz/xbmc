@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,10 +19,11 @@
  *
  */
 
+#include <stdint.h>
 #include <vector>
 
 #include "profiles/Profile.h"
-#include "settings/ISettingsHandler.h"
+#include "settings/lib/ISettingsHandler.h"
 #include "threads/CriticalSection.h"
 
 class TiXmlNode;
@@ -30,12 +31,11 @@ class TiXmlNode;
 class CProfilesManager : public ISettingsHandler
 {
 public:
-  static CProfilesManager& Get();
+  static CProfilesManager& GetInstance();
 
-  virtual bool OnSettingsLoading();
-  virtual void OnSettingsLoaded();
-  virtual void OnSettingsSaved();
-  virtual void OnSettingsCleared();
+  virtual void OnSettingsLoaded() override;
+  virtual void OnSettingsSaved() const override;
+  virtual void OnSettingsCleared() override;
 
   bool Load();
   /*! \brief Load the user profile information from disk
@@ -46,7 +46,7 @@ public:
     */
   bool Load(const std::string &file);
 
-  bool Save();
+  bool Save() const;
   /*! \brief Save the user profile information to disk
     Saves the list of profiles to the profiles.xml file.
     \param file XML file to save.
@@ -183,11 +183,17 @@ protected:
   virtual ~CProfilesManager();
 
 private:
+  /*! \brief Set the current profile id and update the special://profile path
+    \param profileId profile index
+    */
+  void SetCurrentProfileId(size_t profileId);
+
   std::vector<CProfile> m_profiles;
   bool m_usingLoginScreen;
+  bool m_profileLoadedForLogin;
   int m_autoLoginProfile;
   uint32_t m_lastUsedProfile;
-  uint32_t m_currentProfile;
+  uint32_t m_currentProfile; // do not modify directly, use SetCurrentProfileId() function instead
   int m_nextProfileId; // for tracking the next available id to give to a new profile to ensure id's are not re-used
   CCriticalSection m_critical;
 };

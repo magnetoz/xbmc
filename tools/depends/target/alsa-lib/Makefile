@@ -19,9 +19,9 @@ CONFIGURE=cp -f $(CONFIG_SUB) $(CONFIG_GUESS) .; \
           --with-ctl-plugins=ext \
           --with-pcm-plugins="copy,linear,route,mulaw,alaw,adpcm,rate,plug,multi,file,null,empty,share,meter,hooks,lfloat,ladspa,asym,iec958,softvol,extplug,ioplug,mmap_emul" \
           --disable-resmgr --enable-aload --enable-mixer  --enable-pcm  --disable-rawmidi  --enable-hwdep  --disable-seq  --disable-alisp  --disable-old-symbols --disable-python \
-          --with-softfloat=yes --with-libdl=yes --with-pthread=yes --with-librt=no --disable-shared \
+          --with-softfloat=yes --with-libdl=yes --with-pthread=yes --with-librt=no --enable-shared \
 
-LIBDYLIB=$(PLATFORM)/src/.libs/$(LIBNAME).a
+LIBDYLIB=$(PLATFORM)/src/.libs/$(LIBNAME).so
 
 CLEAN_FILES=$(ARCHIVE) $(PLATFORM)
 
@@ -39,6 +39,7 @@ ifeq ($(OS),android)
 	cd $(PLATFORM); patch -p0 < ../removeshm-3.patch
 	cd $(PLATFORM); patch -p0 < ../timeval.patch
 endif
+	cd $(PLATFORM); patch -p0 < ../host-os.patch
 	cd $(PLATFORM); $(CONFIGURE)
 
 $(LIBDYLIB): $(PLATFORM)

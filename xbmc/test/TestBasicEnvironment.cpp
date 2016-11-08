@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 
 #include "TestBasicEnvironment.h"
 #include "TestUtils.h"
+#include "cores/DataCacheCore.h"
+#include "cores/AudioEngine/Engines/ActiveAE/AudioDSPAddons/ActiveAEDSP.h"
 #include "filesystem/Directory.h"
 #include "filesystem/File.h"
 #include "filesystem/SpecialProtocol.h"
@@ -27,6 +29,16 @@
 #include "settings/AdvancedSettings.h"
 #include "settings/Settings.h"
 #include "Util.h"
+#include "Application.h"
+#include "PlayListPlayer.h"
+#include "interfaces/AnnouncementManager.h"
+#include "addons/BinaryAddonCache.h"
+#include "interfaces/python/XBPython.h"
+#include "pvr/PVRManager.h"
+
+#if defined(TARGET_WINDOWS)
+#include "platform/win32/WIN32Util.h"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -34,14 +46,19 @@
 
 void TestBasicEnvironment::SetUp()
 {
-  char *tmp;
-  CStdString xbmcTempPath;
   XFILE::CFile *f;
+
+  g_application.m_ServiceManager.reset(new CServiceManager());
+  if (!g_application.m_ServiceManager->Init1())
+    exit(1);
 
   /* NOTE: The below is done to fix memleak warning about unitialized variable
    * in xbmcutil::GlobalsSingleton<CAdvancedSettings>::getInstance().
    */
   g_advancedSettings.Initialize();
+
+  // Need to configure the network as some tests access the network member
+  g_application.SetupNetwork();
 
   if (!CXBMCTestUtils::Instance().SetReferenceFileBasePath())
     SetUpError();
@@ -52,19 +69,21 @@ void TestBasicEnvironment::SetUp()
 //for darwin set framework path - else we get assert
 //in guisettings init below
 #ifdef TARGET_DARWIN
-  CStdString frameworksPath = CUtil::GetFrameworksPath();
+  std::string frameworksPath = CUtil::GetFrameworksPath();
   CSpecialProtocol::SetXBMCFrameworksPath(frameworksPath);    
 #endif
-  /* TODO: Something should be done about all the asserts in GUISettings so
+  /** 
+   * @todo Something should be done about all the asserts in GUISettings so
    * that the initialization of these components won't be needed.
    */
   g_powerManager.Initialize();
-  CSettings::Get().Initialize();
+  CSettings::GetInstance().Initialize();
 
   /* Create a temporary directory and set it to be used throughout the
    * test suite run.
    */
-#ifndef _LINUX
+#ifdef TARGET_WINDOWS
+  std::string xbmcTempPath;
   TCHAR lpTempPathBuffer[MAX_PATH];
   if (!GetTempPath(MAX_PATH, lpTempPathBuffer))
     SetUpError();
@@ -77,18 +96,21 @@ void TestBasicEnvironment::SetUp()
   CSpecialProtocol::SetTempPath(lpTempPathBuffer);
 #else
   char buf[MAX_PATH];
-  (void)xbmcTempPath;
+  char *tmp;
   strcpy(buf, "/tmp/xbmctempdirXXXXXX");
   if ((tmp = mkdtemp(buf)) == NULL)
     SetUpError();
   CSpecialProtocol::SetTempPath(tmp);
 #endif
 
+  if (!g_application.m_ServiceManager->Init2())
+	  exit(1);
+
   /* Create and delete a tempfile to initialize the VFS (really to initialize
    * CLibcdio). This is done so that the initialization of the VFS does not
    * affect the performance results of the test cases.
    */
-  /* TODO: Make the initialization of the VFS here optional so it can be
+  /** @todo Make the initialization of the VFS here optional so it can be
    * testable in a test case.
    */
   f = XBMC_CREATETEMPFILE("");
@@ -101,8 +123,10 @@ void TestBasicEnvironment::SetUp()
 
 void TestBasicEnvironment::TearDown()
 {
-  CStdString xbmcTempPath = CSpecialProtocol::TranslatePath("special://temp/");
+  std::string xbmcTempPath = CSpecialProtocol::TranslatePath("special://temp/");
   XFILE::CDirectory::Remove(xbmcTempPath);
+  CSettings::GetInstance().Uninitialize();
+  g_application.m_ServiceManager->Deinit();
 }
 
 void TestBasicEnvironment::SetUpError()

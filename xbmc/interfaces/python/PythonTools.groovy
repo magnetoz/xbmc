@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -93,12 +92,25 @@ public class PythonTools
       // if this is a destructor node then the methodtype best reflect that
       assert (method.name() != 'destructor' || methodType == MethodType.destructor), 'Cannot use a destructor node and not identify the type as a destructor' + method
 
-      return (clazz == null) ? method.@sym_name :
-      (
-      (methodType == MethodType.constructor) ? (clazz + "_New") :
-      (methodType == MethodType.destructor ? (clazz + "_Dealloc") : 
-       ((method.@name.startsWith("operator ") && "[]" == method.@name.substring(9)) ? "${clazz}_operatorIndex_" : clazz + "_" + method.@sym_name))
-      )
+      if (clazz == null)
+        return method.@sym_name
+
+      if (methodType == MethodType.constructor)
+        return clazz + "_New"
+
+      if (methodType == MethodType.destructor)
+        return clazz + "_Dealloc"
+
+      if (method.@name.startsWith("operator "))
+      {
+        if ("[]" == method.@name.substring(9))
+          return clazz + "_operatorIndex_"
+
+        if ("()" == method.@name.substring(9))
+          return clazz + "_callable_"
+      }
+
+      return clazz + "_" + method.@sym_name;
    }
 
   public static String makeDocString(Node docnode)

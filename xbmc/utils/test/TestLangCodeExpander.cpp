@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,20 +22,20 @@
 
 #include "gtest/gtest.h"
 
-TEST(TestLangCodeExpander, ConvertTwoToThreeCharCode)
+TEST(TestLangCodeExpander, ConvertISO6391ToISO6392T)
 {
-  CStdString refstr, varstr;
+  std::string refstr, varstr;
 
   refstr = "eng";
-  g_LangCodeExpander.ConvertTwoToThreeCharCode(varstr, "en");
+  g_LangCodeExpander.ConvertISO6391ToISO6392T("en", varstr);
   EXPECT_STREQ(refstr.c_str(), varstr.c_str());
 }
 
-TEST(TestLangCodeExpander, ConvertToThreeCharCode)
+TEST(TestLangCodeExpander, ConvertToISO6392T)
 {
-  CStdString refstr, varstr;
+  std::string refstr, varstr;
 
   refstr = "eng";
-  g_LangCodeExpander.ConvertToThreeCharCode(varstr, "en");
+  g_LangCodeExpander.ConvertToISO6392T("en", varstr);
   EXPECT_STREQ(refstr.c_str(), varstr.c_str());
 }

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,40 +21,42 @@
 #include "GUIDialogSongInfo.h"
 #include "utils/URIUtils.h"
 #include "utils/StringUtils.h"
+#include "utils/Variant.h"
 #include "dialogs/GUIDialogFileBrowser.h"
+#include "dialogs/GUIDialogSelect.h"
 #include "GUIPassword.h"
 #include "GUIUserMessages.h"
 #include "music/MusicDatabase.h"
 #include "music/windows/GUIWindowMusicBase.h"
 #include "music/tags/MusicInfoTag.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
+#include "input/Key.h"
 #include "filesystem/File.h"
 #include "filesystem/CurlFile.h"
 #include "FileItem.h"
-#include "settings/AdvancedSettings.h"
 #include "settings/MediaSourceSettings.h"
-#include "settings/Settings.h"
 #include "guilib/LocalizeStrings.h"
-#include "TextureCache.h"
 #include "music/Album.h"
 #include "storage/MediaManager.h"
 #include "GUIDialogMusicInfo.h"
 
 using namespace XFILE;
 
-#define CONTROL_OK        10
-#define CONTROL_CANCEL    11
-#define CONTROL_ALBUMINFO 12
-#define CONTROL_GETTHUMB  13
+#define CONTROL_BTN_REFRESH       6
+#define CONTROL_USERRATING        7
+#define CONTROL_BTN_GET_THUMB     10
+#define CONTROL_ALBUMINFO         12
+
+#define CONTROL_LIST              50
 
 CGUIDialogSongInfo::CGUIDialogSongInfo(void)
-    : CGUIDialog(WINDOW_DIALOG_SONG_INFO, "DialogSongInfo.xml")
+    : CGUIDialog(WINDOW_DIALOG_SONG_INFO, "DialogMusicInfo.xml")
     , m_song(new CFileItem)
+    , m_albumId(-1)
 {
   m_cancelled = false;
   m_needsUpdate = false;
-  m_startRating = -1;
+  m_startUserrating = -1;
   m_loadType = KEEP_IN_MEMORY;
 }
 
@@ -68,20 +70,15 @@ bool CGUIDialogSongInfo::OnMessage(CGUIMessage& message)
   {
   case GUI_MSG_WINDOW_DEINIT:
     {
-      if (!m_cancelled && m_startRating != m_song->GetMusicInfoTag()->GetRating())
+      if (m_startUserrating != m_song->GetMusicInfoTag()->GetUserrating())
       {
         CMusicDatabase db;
-        if (db.Open())      // OpenForWrite() ?
+        if (db.Open())
         {
-          db.SetSongRating(m_song->GetPath(), m_song->GetMusicInfoTag()->GetRating());
+          m_needsUpdate = true;
+          db.SetSongUserrating(m_song->GetPath(), m_song->GetMusicInfoTag()->GetUserrating());
           db.Close();
         }
-        m_needsUpdate = true;
-      }
-      else
-      { // cancelled - reset the song rating
-        SetRating(m_startRating);
-        m_needsUpdate = false;
       }
       break;
     }
@@ -92,17 +89,9 @@ bool CGUIDialogSongInfo::OnMessage(CGUIMessage& message)
   case GUI_MSG_CLICKED:
     {
       int iControl = message.GetSenderId();
-      if (iControl == CONTROL_CANCEL)
+      if (iControl == CONTROL_USERRATING)
       {
-        m_cancelled = true;
-        Close();
-        return true;
-      }
-      else if (iControl == CONTROL_OK)
-      {
-        m_cancelled = false;
-        Close();
-        return true;
+        OnSetUserrating();
       }
       else if (iControl == CONTROL_ALBUMINFO)
       {
@@ -110,15 +99,14 @@ bool CGUIDialogSongInfo::OnMessage(CGUIMessage& message)
         if (window)
         {
           CFileItem item(*m_song);
-          CStdString path;
-          path.Format("musicdb://albums/%li",m_albumId);
+          std::string path = StringUtils::Format("musicdb://albums/%li",m_albumId);
           item.SetPath(path);
           item.m_bIsFolder = true;
-          window->OnInfo(&item, true);
+          window->OnItemInfo(&item, true);
         }
         return true;
       }
-      else if (iControl == CONTROL_GETTHUMB)
+      else if (iControl == CONTROL_BTN_GET_THUMB)
       {
         OnGetThumb();
         return true;
@@ -132,17 +120,15 @@ bool CGUIDialogSongInfo::OnMessage(CGUIMessage& message)
 
 bool CGUIDialogSongInfo::OnAction(const CAction &action)
 {
-  char rating = m_song->GetMusicInfoTag()->GetRating();
+  int userrating = m_song->GetMusicInfoTag()->GetUserrating();
   if (action.GetID() == ACTION_INCREASE_RATING)
   {
-    if (rating < '5')
-      SetRating(rating + 1);
+    SetUserrating(userrating + 1);
     return true;
   }
   else if (action.GetID() == ACTION_DECREASE_RATING)
   {
-    if (rating > '0')
-      SetRating(rating - 1);
+    SetUserrating(userrating - 1);
     return true;
   }
   else if (action.GetID() == ACTION_SHOW_INFO)
@@ -167,8 +153,7 @@ void CGUIDialogSongInfo::OnInitWindow()
   // no known db info - check if parent dir is an album
   if (m_song->GetMusicInfoTag()->GetDatabaseId() == -1)
   {
-    CStdString path;
-    URIUtils::GetDirectory(m_song->GetPath(),path);
+    std::string path = URIUtils::GetDirectory(m_song->GetPath());
     m_albumId = db.GetAlbumIdByPath(path);
   }
   else
@@ -179,16 +164,28 @@ void CGUIDialogSongInfo::OnInitWindow()
   }
   CONTROL_ENABLE_ON_CONDITION(CONTROL_ALBUMINFO, m_albumId > -1);
 
+  // Disable music user rating button for plugins as they don't have tables to save this
+  if (m_song->IsPlugin())
+    CONTROL_DISABLE(CONTROL_USERRATING);
+  else
+    CONTROL_ENABLE(CONTROL_USERRATING);
+
+  SET_CONTROL_HIDDEN(CONTROL_BTN_REFRESH);
+  SET_CONTROL_HIDDEN(CONTROL_LIST);
+  SET_CONTROL_LABEL(CONTROL_USERRATING, 38023);
+  SET_CONTROL_LABEL(CONTROL_BTN_GET_THUMB, 13405);
+  SET_CONTROL_LABEL(CONTROL_ALBUMINFO, 10523);
+
   CGUIDialog::OnInitWindow();
 }
 
-void CGUIDialogSongInfo::SetRating(char rating)
+void CGUIDialogSongInfo::SetUserrating(int userrating)
 {
-  if (rating < '0') rating = '0';
-  if (rating > '5') rating = '5';
-  if (rating != m_song->GetMusicInfoTag()->GetRating())
+  if (userrating < 0) userrating = 0;
+  if (userrating > 10) userrating = 10;
+  if (userrating != m_song->GetMusicInfoTag()->GetUserrating())
   {
-    m_song->GetMusicInfoTag()->SetRating(rating);
+    m_song->GetMusicInfoTag()->SetUserrating(userrating);
     // send a message to all windows to tell them to update the fileitem (eg playlistplayer, media windows)
     CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_UPDATE_ITEM, 0, m_song);
     g_windowManager.SendMessage(msg);
@@ -199,7 +196,7 @@ void CGUIDialogSongInfo::SetSong(CFileItem *item)
 {
   *m_song = *item;
   m_song->LoadMusicTag();
-  m_startRating = m_song->GetMusicInfoTag()->GetRating();
+  m_startUserrating = m_song->GetMusicInfoTag()->GetUserrating();
   MUSIC_INFO::CMusicInfoLoader::LoadAdditionalTagInfo(m_song.get());
    // set artist thumb as well
   CMusicDatabase db;
@@ -208,10 +205,10 @@ void CGUIDialogSongInfo::SetSong(CFileItem *item)
   {
     std::vector<int> artists;
     CVariant artistthumbs;
-    db.GetArtistsBySong(item->GetMusicInfoTag()->GetDatabaseId(), true, artists);
+    db.GetArtistsBySong(item->GetMusicInfoTag()->GetDatabaseId(), artists);
     for (std::vector<int>::const_iterator artistId = artists.begin(); artistId != artists.end(); ++artistId)
     {
-      std::string thumb = db.GetArtForItem(*artistId, "artist", "thumb");
+      std::string thumb = db.GetArtForItem(*artistId, MediaTypeArtist, "thumb");
       if (!thumb.empty())
         artistthumbs.push_back(thumb);
     }
@@ -224,7 +221,7 @@ void CGUIDialogSongInfo::SetSong(CFileItem *item)
   else if (m_song->HasMusicInfoTag() && !m_song->GetMusicInfoTag()->GetArtist().empty())
   {
     int idArtist = db.GetArtistByName(m_song->GetMusicInfoTag()->GetArtist()[0]);
-    std::string thumb = db.GetArtForItem(idArtist, "artist", "thumb");
+    std::string thumb = db.GetArtForItem(idArtist, MediaTypeArtist, "thumb");
     if (!thumb.empty())
       m_song->SetProperty("artistthumb", thumb);
   }
@@ -236,10 +233,10 @@ CFileItemPtr CGUIDialogSongInfo::GetCurrentListItem(int offset)
   return m_song;
 }
 
-bool CGUIDialogSongInfo::DownloadThumbnail(const CStdString &thumbFile)
+bool CGUIDialogSongInfo::DownloadThumbnail(const std::string &thumbFile)
 {
-  // TODO: Obtain the source...
-  CStdString source;
+  //! @todo Obtain the source...
+  std::string source;
   CCurlFile http;
   http.Download(source, thumbFile);
   return true;
@@ -252,17 +249,17 @@ bool CGUIDialogSongInfo::DownloadThumbnail(const CStdString &thumbFile)
 // 3.  Local thumb
 // 4.  No thumb (if no Local thumb is available)
 
-// TODO: Currently no support for "embedded thumb" as there is no easy way to grab it
-//       without sending a file that has this as it's album to this class
+//! @todo Currently no support for "embedded thumb" as there is no easy way to grab it
+//!       without sending a file that has this as it's album to this class
 void CGUIDialogSongInfo::OnGetThumb()
 {
   CFileItemList items;
 
 
   // Grab the thumbnail from the web
-  CStdString thumbFromWeb;
   /*
-  URIUtils::AddFileToFolder(g_advancedSettings.m_cachePath, "allmusicThumb.jpg", thumbFromWeb);
+  std::string thumbFromWeb;
+  thumbFromWeb = URIUtils::AddFileToFolder(g_advancedSettings.m_cachePath, "allmusicThumb.jpg");
   if (DownloadThumbnail(thumbFromWeb))
   {
     CFileItemPtr item(new CFileItem("thumb://allmusic.com", false));
@@ -281,8 +278,8 @@ void CGUIDialogSongInfo::OnGetThumb()
   }
 
   // local thumb
-  CStdString cachedLocalThumb;
-  CStdString localThumb(m_song->GetUserMusicThumb(true));
+  std::string cachedLocalThumb;
+  std::string localThumb(m_song->GetUserMusicThumb(true));
   if (m_song->IsMusicDb())
   {
     CFileItem item(m_song->GetMusicInfoTag()->GetURL(), false);
@@ -305,8 +302,8 @@ void CGUIDialogSongInfo::OnGetThumb()
     items.Add(item);
   }
 
-  CStdString result;
-  VECSOURCES sources(*CMediaSourceSettings::Get().GetSources("music"));
+  std::string result;
+  VECSOURCES sources(*CMediaSourceSettings::GetInstance().GetSources("music"));
   CGUIDialogMusicInfo::AddItemPathToFileBrowserSources(sources, *m_song);
   g_mediaManager.GetLocalDrives(sources);
   if (!CGUIDialogFileBrowser::ShowAndGetImage(items, sources, g_localizeStrings.Get(1030), result))
@@ -318,11 +315,11 @@ void CGUIDialogSongInfo::OnGetThumb()
   // delete the thumbnail if that's what the user wants, else overwrite with the
   // new thumbnail
 
-  CStdString newThumb;
+  std::string newThumb;
   if (result == "thumb://None")
     newThumb = "-";
   else if (result == "thumb://allmusic.com")
-    newThumb = thumbFromWeb;
+    newThumb.clear();
   else if (result == "thumb://Local")
     newThumb = localThumb;
   else
@@ -344,4 +341,26 @@ void CGUIDialogSongInfo::OnGetThumb()
   g_windowManager.SendMessage(msg);
 
 //  m_hasUpdatedThumb = true;
+}
+
+void CGUIDialogSongInfo::OnSetUserrating()
+{
+  CGUIDialogSelect *dialog = (CGUIDialogSelect *)g_windowManager.GetWindow(WINDOW_DIALOG_SELECT);
+  if (dialog)
+  {
+    dialog->SetHeading(CVariant{ 38023 });
+    dialog->Add(g_localizeStrings.Get(38022));
+    for (int i = 1; i <= 10; i++)
+      dialog->Add(StringUtils::Format("%s: %i", g_localizeStrings.Get(563).c_str(), i));
+
+    dialog->SetSelected(m_song->GetMusicInfoTag()->GetUserrating());
+
+    dialog->Open();
+
+    int iItem = dialog->GetSelectedItem();
+    if (iItem < 0)
+      return;
+
+    SetUserrating(iItem);
+  }
 }

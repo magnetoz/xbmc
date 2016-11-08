@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,29 +19,25 @@
  */
 #include "Service.h"
 #include "AddonManager.h"
+#include "interfaces/generic/ScriptInvocationManager.h"
 #include "utils/log.h"
-#ifdef HAS_PYTHON
-#include "interfaces/python/XBPython.h"
-#endif
-
-using namespace std;
+#include "system.h"
 
 namespace ADDON
 {
 
-CService::CService(const cp_extension_t *ext)
-  : CAddon(ext), m_type(UNKNOWN), m_startOption(LOGIN)
+std::unique_ptr<CService> CService::FromExtension(AddonProps props, const cp_extension_t* ext)
 {
-  BuildServiceType();
-
-  CStdString start = CAddonMgr::Get().GetExtValue(ext->configuration, "@start");
-  if (start.Equals("startup"))
-    m_startOption = STARTUP;
+  START_OPTION startOption(LOGIN);
+  std::string start = CAddonMgr::GetInstance().GetExtValue(ext->configuration, "@start");
+  if (start == "startup")
+    startOption = STARTUP;
+  return std::unique_ptr<CService>(new CService(std::move(props), TYPE(UNKNOWN), startOption));
 }
 
 
-CService::CService(const AddonProps &props)
-  : CAddon(props), m_type(UNKNOWN), m_startOption(LOGIN)
+CService::CService(AddonProps props, TYPE type, START_OPTION startOption)
+  : CAddon(std::move(props)), m_type(type), m_startOption(startOption)
 {
   BuildServiceType();
 }
@@ -53,7 +49,7 @@ bool CService::Start()
   {
 #ifdef HAS_PYTHON
   case PYTHON:
-    ret = (g_pythonParser.evalFile(LibPath(), this->shared_from_this()) != -1);
+    ret = (CScriptInvocationManager::GetInstance().ExecuteAsync(LibPath(), this->shared_from_this()) != -1);
     break;
 #endif
 
@@ -74,7 +70,7 @@ bool CService::Stop()
   {
 #ifdef HAS_PYTHON
   case PYTHON:
-    ret = g_pythonParser.StopScript(LibPath());
+    ret = CScriptInvocationManager::GetInstance().Stop(LibPath());
     break;
 #endif
 
@@ -89,17 +85,17 @@ bool CService::Stop()
 
 void CService::BuildServiceType()
 {
-  CStdString str = LibPath();
-  CStdString ext;
+  std::string str = LibPath();
+  std::string ext;
 
   size_t p = str.find_last_of('.');
-  if (p != string::npos)
+  if (p != std::string::npos)
     ext = str.substr(p + 1);
 
 #ifdef HAS_PYTHON
-  CStdString pythonExt = ADDON_PYTHON_EXT;
+  std::string pythonExt = ADDON_PYTHON_EXT;
   pythonExt.erase(0, 2);
-  if ( ext.Equals(pythonExt) )
+  if ( ext == pythonExt )
     m_type = PYTHON;
   else
 #endif

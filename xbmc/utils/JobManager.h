@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -100,7 +100,7 @@ public:
    \param job a pointer to the job to add. The job should be subclassed from CJob.
    \sa CJob
    */
-  void AddJob(CJob *job);
+  bool AddJob(CJob *job);
 
   /*!
    \brief Cancel a job in the queue
@@ -121,6 +121,11 @@ public:
   void CancelJobs();
 
   /*!
+   \brief Check whether the queue is processing a job
+   */
+  bool IsProcessing() const;
+
+  /*!
    \brief The callback used when a job completes.
 
    OnJobComplete is called at the completion of the CJob::DoWork function, and is used
@@ -135,6 +140,13 @@ public:
    */
   virtual void OnJobComplete(unsigned int jobID, bool success, CJob *job);
 
+protected:
+  /*!
+   \brief Returns if we still have jobs waiting to be processed
+   NOTE: This function does not take into account the jobs that are currently processing 
+   */
+  bool QueueEmpty() const;
+  
 private:
   void QueueNextJob();
 
@@ -195,6 +207,20 @@ class CJobManager
     CJob::PRIORITY m_priority;
   };
 
+  template<typename F>
+  class CLambdaJob : public CJob
+  {
+  public:
+    CLambdaJob(F&& f) : m_f(std::forward<F>(f)) {};
+    bool DoWork() override
+    {
+      m_f();
+      return true;
+    }
+  private:
+    F m_f;
+  };
+
 public:
   /*!
    \brief The only way through which the global instance of the CJobManager should be accessed.
@@ -213,6 +239,15 @@ public:
   unsigned int AddJob(CJob *job, IJobCallback *callback, CJob::PRIORITY priority = CJob::PRIORITY_LOW);
 
   /*!
+   \brief Add a function f to this job manager for asynchronously execution.
+   */
+  template<typename F>
+  void Submit(F&& f)
+  {
+    AddJob(new CLambdaJob<F>(std::forward<F>(f)), nullptr);
+  }
+
+  /*!
    \brief Cancel a job with the given id.
    \param jobID the id of the job to cancel, retrieved previously from AddJob()
    \sa AddJob()
@@ -227,41 +262,38 @@ public:
   void CancelJobs();
 
   /*!
-   \brief Checks to see if any jobs of a specific type are currently processing.
-   \param pausedType Job type to search for
-   \return Number of matching jobs
-   \sa Pause(), UnPause(), IsPaused()
+   \brief Re-start accepting jobs again
+   Called after calling CancelJobs() to allow this manager to accept more jobs
+   \throws std::logic_error if the manager was not previously cancelled
+   \sa CancelJobs()
    */
-  int IsProcessing(const std::string &pausedType) const;
+  void Restart();
 
   /*!
-   \brief Suspends queueing of the specified priority until unpaused
+   \brief Checks to see if any jobs of a specific type are currently processing.
+   \param type Job type to search for
+   \return Number of matching jobs
+   */
+  int IsProcessing(const std::string &type) const;
+
+  /*!
+   \brief Suspends queueing of jobs with priority PRIORITY_LOW_PAUSABLE until unpaused
    Useful to (for ex) stop queuing thumb jobs during video start/playback.
    Does not affect currently processing jobs, use IsProcessing to see if any need to be waited on
-   \param priority only jobs of this priority will be affected
-   \sa UnPause(), IsPaused(), IsProcessing()
+   \sa UnPauseJobs()
    */
-  void Pause(const CJob::PRIORITY &priority);
+  void PauseJobs();
 
   /*!
-   \brief Resumes queueing of the specified priority
-   \param priority only jobs of this priority will be affected
-   \sa Pause(), IsPaused(), IsProcessing()
+   \brief Resumes queueing of (previously paused) jobs with priority PRIORITY_LOW_PAUSABLE
+   \sa PauseJobs()
    */
-  void UnPause(const CJob::PRIORITY &priority);
-
-  /*!
-   \brief Checks if jobs of specified priority are paused.
-   \param priority only jobs of this priority will be affected
-   \sa Pause(), UnPause(), IsProcessing()
-   */
-  bool IsPaused(const CJob::PRIORITY &priority) const;
+  void UnPauseJobs();
 
   /*!
    \brief Checks to see if any jobs with specific priority are currently processing.
    \param priority to search for
    \return true if processing jobs, else returns false
-   \sa Pause(), UnPause(), IsPaused()
    */
   bool IsProcessing(const CJob::PRIORITY &priority) const;
 
@@ -310,7 +342,7 @@ private:
 
   void StartWorkers(CJob::PRIORITY priority);
   void RemoveWorker(const CJobWorker *worker);
-  unsigned int GetMaxWorkers(CJob::PRIORITY priority) const;
+  static unsigned int GetMaxWorkers(CJob::PRIORITY priority);
 
   unsigned int m_jobCounter;
 
@@ -319,7 +351,7 @@ private:
   typedef std::vector<CJobWorker*> Workers;
 
   JobQueue   m_jobQueue[CJob::PRIORITY_HIGH+1];
-  bool       m_jobPause[CJob::PRIORITY_HIGH+1];
+  bool       m_pauseJobs;
   Processing m_processing;
   Workers    m_workers;
 

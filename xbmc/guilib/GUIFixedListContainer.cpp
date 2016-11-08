@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,8 +19,7 @@
  */
 
 #include "GUIFixedListContainer.h"
-#include "GUIListItem.h"
-#include "Key.h"
+#include "input/Key.h"
 
 CGUIFixedListContainer::CGUIFixedListContainer(int parentID, int controlID, float posX, float posY, float width, float height, ORIENTATION orientation, const CScroller& scroller, int preloadItems, int fixedPosition, int cursorRange)
     : CGUIBaseContainer(parentID, controlID, posX, posY, width, height, orientation, scroller, preloadItems)
@@ -283,7 +282,7 @@ bool CGUIFixedListContainer::HasPreviousPage() const
 
 bool CGUIFixedListContainer::HasNextPage() const
 {
-  return (GetOffset() != (int)m_items.size() - m_itemsPerPage && (int)m_items.size() >= m_itemsPerPage);
+  return (GetOffset() < (int)m_items.size() - m_itemsPerPage && (int)m_items.size() >= m_itemsPerPage);
 }
 
 int CGUIFixedListContainer::GetCurrentPage() const

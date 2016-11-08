@@ -1,8 +1,7 @@
 #pragma once
-
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,36 +19,19 @@
  *
  */
 
-#include "GUIWindowPVRCommon.h"
-#include "utils/Observer.h"
+#include "GUIWindowPVRTimersBase.h"
+
+#include <string>
 
 namespace PVR
 {
-  class CGUIWindowPVR;
-
-  class CGUIWindowPVRTimers : public CGUIWindowPVRCommon, private Observer
+  class CGUIWindowPVRTimers : public CGUIWindowPVRTimersBase
   {
-    friend class CGUIWindowPVR;
-
   public:
-    CGUIWindowPVRTimers(CGUIWindowPVR *parent);
+    CGUIWindowPVRTimers(bool bRadio);
     virtual ~CGUIWindowPVRTimers(void) {};
 
-    void GetContextButtons(int itemNumber, CContextButtons &buttons) const;
-    bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-    void UpdateData(bool bUpdateSelectedFile = true);
-    void Notify(const Observable &obs, const ObservableMessage msg);
-    void UnregisterObservers(void);
-    void ResetObservers(void);
-
-  private:
-    bool OnClickButton(CGUIMessage &message);
-    bool OnClickList(CGUIMessage &message);
-
-    bool OnContextButtonActivate(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonAdd(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonDelete(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonEdit(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonRename(CFileItem *item, CONTEXT_BUTTON button);
+  protected:
+    virtual std::string GetDirectoryPath(void) override;
   };
 }

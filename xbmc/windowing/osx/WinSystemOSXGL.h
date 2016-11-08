@@ -5,7 +5,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
-#if !defined(__arm__)
+#if !defined(__arm__) && !defined(__aarch64__)
 #include "WinSystemOSX.h"
 #include "rendering/gl/RenderSystemGL.h"
 #include "utils/GlobalsHandling.h"
@@ -32,12 +32,12 @@ class CWinSystemOSXGL : public CWinSystemOSX, public CRenderSystemGL
 public:
   CWinSystemOSXGL();
   virtual ~CWinSystemOSXGL();
-  virtual bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop);
-  virtual bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays);
+  virtual bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+  virtual bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
 
 protected:
-  virtual bool PresentRenderImpl(const CDirtyRegionList &dirty);
-  virtual void SetVSyncImpl(bool enable);  
+  virtual void PresentRenderImpl(bool rendered) override;
+  virtual void SetVSyncImpl(bool enable) override;
 };
 
 XBMC_GLOBAL_REF(CWinSystemOSXGL,g_Windowing);

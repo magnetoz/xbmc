@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,36 +18,36 @@
  *
  */
 
-#include "GUIDialogPVRChannelsOSD.h"
 #include "Application.h"
-#include "ApplicationMessenger.h"
 #include "FileItem.h"
-#include "guilib/GUIWindowManager.h"
-#include "guilib/Key.h"
-#include "guilib/LocalizeStrings.h"
-#include "dialogs/GUIDialogKaiToast.h"
-#include "dialogs/GUIDialogOK.h"
-#include "GUIDialogPVRGuideInfo.h"
-#include "view/ViewState.h"
-#include "settings/Settings.h"
 #include "GUIInfoManager.h"
-#include "cores/IPlayer.h"
+#include "dialogs/GUIDialogKaiToast.h"
+#include "epg/EpgContainer.h"
+#include "guilib/LocalizeStrings.h"
+#include "guilib/GUIWindowManager.h"
+#include "input/Key.h"
+#include "messaging/ApplicationMessenger.h"
+#include "settings/Settings.h"
+#include "utils/StringUtils.h"
+#include "view/ViewState.h"
 
 #include "pvr/PVRManager.h"
 #include "pvr/channels/PVRChannelGroupsContainer.h"
-#include "epg/Epg.h"
-#include "pvr/timers/PVRTimerInfoTag.h"
-#include "pvr/channels/PVRChannelGroupsContainer.h"
+#include "pvr/windows/GUIWindowPVRBase.h"
 
-using namespace std;
+#include "GUIDialogPVRChannelsOSD.h"
+#include "GUIDialogPVRGuideInfo.h"
+
 using namespace PVR;
 using namespace EPG;
+using namespace KODI::MESSAGING;
+
+#define MAX_INVALIDATION_FREQUENCY 2000 // limit to one invalidation per X milliseconds
 
 #define CONTROL_LIST                  11
 
 CGUIDialogPVRChannelsOSD::CGUIDialogPVRChannelsOSD() :
-    CGUIDialog(WINDOW_DIALOG_PVR_OSD_CHANNELS, "DialogPVRChannelsOSD.xml"),
-    Observer()
+    CGUIDialog(WINDOW_DIALOG_PVR_OSD_CHANNELS, "DialogPVRChannelsOSD.xml")
 {
   m_vecItems = new CFileItemList;
 }
@@ -56,43 +56,14 @@ CGUIDialogPVRChannelsOSD::~CGUIDialogPVRChannelsOSD()
 {
   delete m_vecItems;
 
-  if (IsObserving(g_infoManager))
-    g_infoManager.UnregisterObserver(this);
+  g_infoManager.UnregisterObserver(this);
+  g_EpgContainer.UnregisterObserver(this);
 }
 
 bool CGUIDialogPVRChannelsOSD::OnMessage(CGUIMessage& message)
 {
   switch (message.GetMessage())
   {
-  case GUI_MSG_WINDOW_DEINIT:
-    {
-      if (m_group)
-      {
-        g_PVRManager.SetPlayingGroup(m_group);
-        SetLastSelectedItem(m_group->GroupID());
-      }
-      Clear();
-    }
-    break;
-
-  case GUI_MSG_WINDOW_INIT:
-    {
-      /* Close dialog immediately if now TV or radio channel is playing */
-      if (!g_PVRManager.IsPlaying())
-      {
-        Close();
-        return true;
-      }
-
-      m_group = GetPlayingGroup();
-
-      CGUIWindow::OnMessage(message);
-      Update(true);
-
-      return true;
-    }
-    break;
-
   case GUI_MSG_CLICKED:
     {
       int iControl = message.GetSenderId();
@@ -117,9 +88,61 @@ bool CGUIDialogPVRChannelsOSD::OnMessage(CGUIMessage& message)
       }
     }
     break;
+  case GUI_MSG_REFRESH_LIST:
+    {
+      switch(message.GetParam1())
+      {
+        case ObservableMessageCurrentItem:
+          m_viewControl.SetItems(*m_vecItems);
+          return true;
+        case ObservableMessageEpg:
+        case ObservableMessageEpgContainer:
+        case ObservableMessageEpgActiveItem:
+          if (IsActive())
+            SetInvalid();
+          return true;
+      }
+    }
+    break;
   }
 
   return CGUIDialog::OnMessage(message);
+}
+
+void CGUIDialogPVRChannelsOSD::OnInitWindow()
+{
+  /* Close dialog immediately if neither a TV nor a radio channel is playing */
+  if (!g_PVRManager.IsPlayingTV() && !g_PVRManager.IsPlayingRadio())
+  {
+    Close();
+    return;
+  }
+
+  Update();
+
+  CGUIDialog::OnInitWindow();
+}
+
+void CGUIDialogPVRChannelsOSD::OnDeinitWindow(int nextWindowID)
+{
+  if (m_group)
+  {
+    if (m_group != GetPlayingGroup())
+    {
+      CGUIWindowPVRBase::SetSelectedItemPath(g_PVRManager.IsPlayingRadio(), GetLastSelectedItemPath(m_group->GroupID()));
+      g_PVRManager.SetPlayingGroup(m_group);
+    }
+    else
+    {
+      CGUIWindowPVRBase::SetSelectedItemPath(g_PVRManager.IsPlayingRadio(), m_viewControl.GetSelectedItemPath());
+    }
+
+    m_group.reset();
+  }
+
+  CGUIDialog::OnDeinitWindow(nextWindowID);
+
+  Clear();
 }
 
 bool CGUIDialogPVRChannelsOSD::OnAction(const CAction &action)
@@ -129,11 +152,17 @@ bool CGUIDialogPVRChannelsOSD::OnAction(const CAction &action)
   case ACTION_PREVIOUS_CHANNELGROUP:
   case ACTION_NEXT_CHANNELGROUP:
     {
+      // save control states and currently selected item of group
+      SaveControlStates();
+
+      // switch to next or previous group
       CPVRChannelGroupPtr group = GetPlayingGroup();
       CPVRChannelGroupPtr nextGroup = action.GetID() == ACTION_NEXT_CHANNELGROUP ? group->GetNextGroup() : group->GetPreviousGroup();
       g_PVRManager.SetPlayingGroup(nextGroup);
-      SetLastSelectedItem(group->GroupID());
       Update();
+
+      // restore control states and previously selected item of group
+      RestoreControlStates();
       return true;
     }
   }
@@ -143,41 +172,80 @@ bool CGUIDialogPVRChannelsOSD::OnAction(const CAction &action)
 
 CPVRChannelGroupPtr CGUIDialogPVRChannelsOSD::GetPlayingGroup()
 {
-  CPVRChannelPtr channel;
-  g_PVRManager.GetCurrentChannel(channel);
-  return g_PVRManager.GetPlayingGroup(channel->IsRadio());
+  CPVRChannelPtr channel(g_PVRManager.GetCurrentChannel());
+  if (channel)
+    return g_PVRManager.GetPlayingGroup(channel->IsRadio());
+  else
+    return CPVRChannelGroupPtr();
 }
 
 void CGUIDialogPVRChannelsOSD::Update()
 {
-  CGUIDialogPVRChannelsOSD::Update(false);
-}
+  g_infoManager.RegisterObserver(this);
+  g_EpgContainer.RegisterObserver(this);
 
-void CGUIDialogPVRChannelsOSD::Update(bool selectPlayingChannel)
-{
   // lock our display, as this window is rendered from the player thread
   g_graphicsContext.Lock();
-
-  if (!IsObserving(g_infoManager))
-    g_infoManager.RegisterObserver(this);
-
   m_viewControl.SetCurrentView(DEFAULT_VIEW_LIST);
 
   // empty the list ready for population
   Clear();
 
-  CPVRChannelPtr channel;
-  g_PVRManager.GetCurrentChannel(channel);
-  CPVRChannelGroupPtr group = g_PVRManager.GetPlayingGroup(channel->IsRadio());
-
-  if (group)
+  CPVRChannelPtr channel(g_PVRManager.GetCurrentChannel());
+  if (channel)
   {
-    group->GetMembers(*m_vecItems);
-    m_viewControl.SetItems(*m_vecItems);
-    m_viewControl.SetSelectedItem(selectPlayingChannel ? group->GetIndex(*channel) : GetLastSelectedItem(group->GroupID()));
+    CPVRChannelGroupPtr group = g_PVRManager.GetPlayingGroup(channel->IsRadio());
+    if (group)
+    {
+      group->GetMembers(*m_vecItems);
+      m_viewControl.SetItems(*m_vecItems);
+
+      if (!m_group)
+      {
+        m_group = group;
+        m_viewControl.SetSelectedItem(CGUIWindowPVRBase::GetSelectedItemPath(channel->IsRadio()));
+        SaveSelectedItemPath(group->GroupID());
+      }
+    }
   }
 
   g_graphicsContext.Unlock();
+}
+
+void CGUIDialogPVRChannelsOSD::SetInvalid()
+{
+  if (m_refreshTimeout.IsTimePast())
+  {
+    VECFILEITEMS items = m_vecItems->GetList();
+    for (VECFILEITEMS::iterator it = items.begin(); it != items.end(); ++it)
+      (*it)->SetInvalid();
+    CGUIDialog::SetInvalid();
+    m_refreshTimeout.Set(MAX_INVALIDATION_FREQUENCY);
+  }
+}
+
+void CGUIDialogPVRChannelsOSD::SaveControlStates()
+{
+  CGUIDialog::SaveControlStates();
+
+  CPVRChannelGroupPtr group = GetPlayingGroup();
+  if (group)
+    SaveSelectedItemPath(group->GroupID());
+}
+
+void CGUIDialogPVRChannelsOSD::RestoreControlStates()
+{
+  CGUIDialog::RestoreControlStates();
+
+  CPVRChannelGroupPtr group = GetPlayingGroup();
+  if (group)
+  {
+    std::string path = GetLastSelectedItemPath(group->GroupID());
+    if (!path.empty())
+      m_viewControl.SetSelectedItem(path);
+    else
+      m_viewControl.SetSelectedItem(0);
+  }
 }
 
 void CGUIDialogPVRChannelsOSD::Clear()
@@ -188,8 +256,12 @@ void CGUIDialogPVRChannelsOSD::Clear()
 
 void CGUIDialogPVRChannelsOSD::CloseOrSelect(unsigned int iItem)
 {
-  if (CSettings::Get().GetBool("pvrmenu.closechannelosdonswitch"))
+  if (CSettings::GetInstance().GetBool(CSettings::SETTING_PVRMENU_CLOSECHANNELOSDONSWITCH))
+  {
+    if (CSettings::GetInstance().GetInt(CSettings::SETTING_PVRMENU_DISPLAYCHANNELINFO) > 0)
+      g_PVRManager.ShowPlayerInfo(CSettings::GetInstance().GetInt(CSettings::SETTING_PVRMENU_DISPLAYCHANNELINFO));
     Close();
+  }
   else
     m_viewControl.SetSelectedItem(iItem);
 }
@@ -206,14 +278,13 @@ void CGUIDialogPVRChannelsOSD::GotoChannel(int item)
     return;
   }
 
-  if (g_PVRManager.IsPlaying() && pItem->HasPVRChannelInfoTag() && g_application.m_pPlayer)
+  if (g_PVRManager.IsPlaying() && pItem->HasPVRChannelInfoTag() && g_application.m_pPlayer->HasPlayer())
   {
-    CPVRChannel *channel = pItem->GetPVRChannelInfoTag();
-    if (!g_PVRManager.CheckParentalLock(*channel) ||
-        !g_application.m_pPlayer->SwitchChannel(*channel))
+    CPVRChannelPtr channel = pItem->GetPVRChannelInfoTag();
+    if (!g_PVRManager.CheckParentalLock(channel) ||
+        !g_application.m_pPlayer->SwitchChannel(channel))
     {
-      CStdString msg;
-      msg.Format(g_localizeStrings.Get(19035).c_str(), channel->ChannelName().c_str()); // CHANNELNAME could not be played. Check the log for details.
+      std::string msg = StringUtils::Format(g_localizeStrings.Get(19035).c_str(), channel->ChannelName().c_str()); // CHANNELNAME could not be played. Check the log for details.
       CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Error,
               g_localizeStrings.Get(19166), // PVR information
               msg);
@@ -221,7 +292,7 @@ void CGUIDialogPVRChannelsOSD::GotoChannel(int item)
     }
   }
   else
-    CApplicationMessenger::Get().PlayFile(*pItem);
+    CApplicationMessenger::GetInstance().PostMsg(TMSG_MEDIA_PLAY, 0, 0, static_cast<void*>(new CFileItem(*pItem)));
 
   m_group = GetPlayingGroup();
 
@@ -236,15 +307,14 @@ void CGUIDialogPVRChannelsOSD::ShowInfo(int item)
   CFileItemPtr pItem = m_vecItems->Get(item);
   if (pItem && pItem->IsPVRChannel())
   {
-    CPVRChannel *channel = pItem->GetPVRChannelInfoTag();
-    if (!g_PVRManager.CheckParentalLock(*channel))
+    CPVRChannelPtr channel(pItem->GetPVRChannelInfoTag());
+    if (!g_PVRManager.CheckParentalLock(channel))
       return;
 
     /* Get the current running show on this channel from the EPG storage */
-    CEpgInfoTag epgnow;
-    if (!channel->GetEPGNow(epgnow))
+    CEpgInfoTagPtr epgnow(channel->GetEPGNow());
+    if (!epgnow)
       return;
-    CFileItem *itemNow  = new CFileItem(epgnow);
 
     /* Load programme info dialog */
     CGUIDialogPVRGuideInfo* pDlgInfo = (CGUIDialogPVRGuideInfo*)g_windowManager.GetWindow(WINDOW_DIALOG_PVR_GUIDE_INFO);
@@ -252,9 +322,8 @@ void CGUIDialogPVRChannelsOSD::ShowInfo(int item)
       return;
 
     /* inform dialog about the file item and open dialog window */
-    pDlgInfo->SetProgInfo(itemNow);
-    pDlgInfo->DoModal();
-    delete itemNow; /* delete previuosly created FileItem */
+    pDlgInfo->SetProgInfo(epgnow);
+    pDlgInfo->Open();
   }
 
   return;
@@ -284,23 +353,19 @@ CGUIControl *CGUIDialogPVRChannelsOSD::GetFirstFocusableControl(int id)
 
 void CGUIDialogPVRChannelsOSD::Notify(const Observable &obs, const ObservableMessage msg)
 {
-  if (msg == ObservableMessageCurrentItem)
-  {
-    g_graphicsContext.Lock();
-    m_viewControl.SetItems(*m_vecItems);
-    g_graphicsContext.Unlock();
-  }
+  CGUIMessage m(GUI_MSG_REFRESH_LIST, GetID(), 0, msg);
+  CApplicationMessenger::GetInstance().SendGUIMessage(m);
 }
 
-void CGUIDialogPVRChannelsOSD::SetLastSelectedItem(int iGroupID)
+void CGUIDialogPVRChannelsOSD::SaveSelectedItemPath(int iGroupID)
 {
-  m_groupSelectedItems[iGroupID] = m_viewControl.GetSelectedItem();
+  m_groupSelectedItemPaths[iGroupID] = m_viewControl.GetSelectedItemPath();
 }
 
-int CGUIDialogPVRChannelsOSD::GetLastSelectedItem(int iGroupID) const
+std::string CGUIDialogPVRChannelsOSD::GetLastSelectedItemPath(int iGroupID) const
 {
-  map<int,int>::const_iterator it = m_groupSelectedItems.find(iGroupID);
-  if(it != m_groupSelectedItems.end())
+  std::map<int, std::string>::const_iterator it = m_groupSelectedItemPaths.find(iGroupID);
+  if (it != m_groupSelectedItemPaths.end())
     return it->second;
-  return 0;
+  return "";
 }

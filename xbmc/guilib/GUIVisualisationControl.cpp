@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,12 +23,11 @@
 #include "GUIUserMessages.h"
 #include "Application.h"
 #include "addons/AddonManager.h"
+#include "addons/AddonSystemSettings.h"
 #include "addons/Visualisation.h"
 #include "utils/log.h"
-#include "guilib/IRenderingCallback.h"
-#include "Key.h"
+#include "input/Key.h"
 
-using namespace std;
 using namespace ADDON;
 
 #define LABEL_ROW1 10
@@ -42,7 +41,7 @@ CGUIVisualisationControl::CGUIVisualisationControl(int parentID, int controlID, 
 }
 
 CGUIVisualisationControl::CGUIVisualisationControl(const CGUIVisualisationControl &from)
-: CGUIRenderingControl(from), m_bAttemptedLoad(false)
+  : CGUIRenderingControl(from), m_bAttemptedLoad(false), m_addon()
 {
   ControlType = GUICONTROL_VISUALISATION;
 }
@@ -53,7 +52,7 @@ bool CGUIVisualisationControl::OnMessage(CGUIMessage &message)
   {
   case GUI_MSG_GET_VISUALISATION:
     message.SetPointer(m_addon.get());
-    return m_addon;
+    return m_addon != NULL;
   case GUI_MSG_VISUALISATION_RELOAD:
     FreeResources(true);
     return true;
@@ -94,7 +93,7 @@ bool CGUIVisualisationControl::OnAction(const CAction &action)
 
 void CGUIVisualisationControl::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
-  if (g_application.IsPlayingAudio())
+  if (g_application.m_pPlayer->IsPlayingAudio())
   {
     if (m_bInvalidated)
       FreeResources(true);
@@ -102,9 +101,9 @@ void CGUIVisualisationControl::Process(unsigned int currentTime, CDirtyRegionLis
     if (!m_addon && !m_bAttemptedLoad)
     {
       AddonPtr addon;
-      if (ADDON::CAddonMgr::Get().GetDefault(ADDON_VIZ, addon))
+      if (ADDON::CAddonSystemSettings::GetInstance().GetActive(ADDON_VIZ, addon))
       {
-        m_addon = boost::dynamic_pointer_cast<CVisualisation>(addon);
+        m_addon = std::dynamic_pointer_cast<CVisualisation>(addon);
         if (m_addon)
           if (!InitCallback(m_addon.get()))
             m_addon.reset();

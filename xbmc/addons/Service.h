@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,8 +39,10 @@ namespace ADDON
       LOGIN
     };
 
-    CService(const cp_extension_t *ext);
-    CService(const AddonProps &props);
+    static std::unique_ptr<CService> FromExtension(AddonProps props, const cp_extension_t* ext);
+
+    explicit CService(AddonProps props) : CAddon(std::move(props)), m_type(UNKNOWN), m_startOption(LOGIN) {}
+    CService(AddonProps props, TYPE type, START_OPTION startOption);
 
     bool Start();
     bool Stop();

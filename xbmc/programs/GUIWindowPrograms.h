@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,16 +30,16 @@ class CGUIWindowPrograms :
 public:
   CGUIWindowPrograms(void);
   virtual ~CGUIWindowPrograms(void);
-  virtual bool OnMessage(CGUIMessage& message);
-  virtual void OnInfo(int iItem);
+  virtual bool OnMessage(CGUIMessage& message) override;
+  virtual void OnItemInfo(int iItem);
 protected:
-  virtual void OnItemLoaded(CFileItem* pItem) {};
-  virtual bool Update(const CStdString& strDirectory, bool updateFilterPath = true);
+  virtual void OnItemLoaded(CFileItem* pItem) override {};
+  virtual bool Update(const std::string& strDirectory, bool updateFilterPath = true) override;
   virtual bool OnPlayMedia(int iItem);
-  virtual bool GetDirectory(const CStdString &strDirectory, CFileItemList &items);
-  virtual void GetContextButtons(int itemNumber, CContextButtons &buttons);
-  virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-  virtual CStdString GetStartFolder(const CStdString &dir);
+  virtual void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+  virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
+  bool OnAddMediaSource() override;
+  virtual std::string GetStartFolder(const std::string &dir) override;
 
   CGUIDialogProgress* m_dlgProgress;
 

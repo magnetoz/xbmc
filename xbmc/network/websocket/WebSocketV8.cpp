@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 
 #include <string>
 #include <sstream>
-#include <boost/uuid/sha1.hpp>
+#include "sha1.hpp"
 
 #include "WebSocketV8.h"
 #include "WebSocket.h"
@@ -46,11 +46,9 @@
 #define WS_HEADER_UPGRADE_VALUE "websocket"
 #define WS_KEY_MAGICSTRING      "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-using namespace std;
-
 bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &response)
 {
-  string strHeader(data, length);
+  std::string strHeader(data, length);
   const char *value;
   HttpParser header;
   if (header.addBytes(data, length) != HttpParser::Done)
@@ -69,14 +67,14 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
 
   // The request must be HTTP/1.1 or higher
   size_t pos;
-  if ((pos = strHeader.find(WS_HTTP_TAG)) == string::npos)
+  if ((pos = strHeader.find(WS_HTTP_TAG)) == std::string::npos)
   {
     CLog::Log(LOGINFO, "WebSocket [hybi-10]: invalid handshake received");
     return false;
   }
 
   pos += strlen(WS_HTTP_TAG);
-  istringstream converter(strHeader.substr(pos, strHeader.find_first_of(" \r\n\t", pos) - pos));
+  std::istringstream converter(strHeader.substr(pos, strHeader.find_first_of(" \r\n\t", pos) - pos));
   float fVersion;
   converter >> fVersion;
 
@@ -86,7 +84,7 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
     return false;
   }
 
-  string websocketKey, websocketProtocol;
+  std::string websocketKey, websocketProtocol;
   // There must be a "Host" header
   value = header.getValue("host");
   if (value == NULL || strlen(value) == 0)
@@ -107,11 +105,11 @@ bool CWebSocketV8::Handshake(const char* data, size_t length, std::string &respo
   value = header.getValue(WS_HEADER_PROTOCOL_LC);
   if (value && strlen(value) > 0)
   {
-    CStdStringArray protocols;
-    StringUtils::SplitString(value, ",", protocols);
-    for (unsigned int index = 0; index < protocols.size(); index++)
+    std::vector<std::string> protocols = StringUtils::Split(value, ",");
+    for (std::vector<std::string>::iterator protocol = protocols.begin(); protocol != protocols.end(); ++protocol)
     {
-      if (protocols.at(index).Trim().Equals(WS_PROTOCOL_JSONRPC))
+      StringUtils::Trim(*protocol);
+      if (*protocol == WS_PROTOCOL_JSONRPC)
       {
         websocketProtocol = WS_PROTOCOL_JSONRPC;
         break;
@@ -190,7 +188,7 @@ const CWebSocketFrame* CWebSocketV8::close(WebSocketCloseReason reason /* = WebS
 
 std::string CWebSocketV8::calculateKey(const std::string &key)
 {
-  string acceptKey = key;
+  std::string acceptKey = key;
   acceptKey.append(WS_KEY_MAGICSTRING);
 
   boost::uuids::detail::sha1 hash;

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
  *
  */
 
-#if defined(__APPLE__) && !defined(__arm__)
+#if defined(TARGET_DARWIN_OSX)
 
 //hack around problem with xbmc's typedef int BOOL
 // and obj-c's typedef unsigned char BOOL
@@ -37,19 +37,19 @@ CWinSystemOSXGL::~CWinSystemOSXGL()
 {
 }
 
-bool CWinSystemOSXGL::PresentRenderImpl(const CDirtyRegionList &dirty)
+void CWinSystemOSXGL::PresentRenderImpl(bool rendered)
 {
-  return FlushBuffer();
+  if (rendered)
+    FlushBuffer();
 }
 
 void CWinSystemOSXGL::SetVSyncImpl(bool enable)
 {
   EnableVSync(false);
   
-  if (enable && m_iVSyncMode == 0)
+  if (enable)
   {
     EnableVSync(true);
-    m_iVSyncMode = 10;
   }
 }
 

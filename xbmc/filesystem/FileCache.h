@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "threads/CriticalSection.h"
 #include "File.h"
 #include "threads/Thread.h"
+#include <atomic>
 
 namespace XFILE
 {
@@ -31,11 +32,11 @@ namespace XFILE
   class CFileCache : public IFile, public CThread
   {
   public:
-    CFileCache();
-    CFileCache(CCacheStrategy *pCache, bool bDeleteCache=true);
+    CFileCache(const unsigned int flags);
+    CFileCache(CCacheStrategy *pCache, bool bDeleteCache = true);
     virtual ~CFileCache();
 
-    void SetCacheStrategy(CCacheStrategy *pCache, bool bDeleteCache=true);
+    void SetCacheStrategy(CCacheStrategy *pCache, bool bDeleteCache = true);
 
     // CThread methods
     virtual void Process();
@@ -48,7 +49,7 @@ namespace XFILE
     virtual bool          Exists(const CURL& url);
     virtual int           Stat(const CURL& url, struct __stat64* buffer);
 
-    virtual unsigned int  Read(void* lpBuf, int64_t uiBufSize);
+    virtual ssize_t       Read(void* lpBuf, size_t uiBufSize);
 
     virtual int64_t       Seek(int64_t iFilePosition, int iWhence);
     virtual int64_t       GetPosition();
@@ -58,14 +59,15 @@ namespace XFILE
 
     IFile *GetFileImp();
 
-    virtual CStdString GetContent();
+    virtual std::string GetContent();
+    virtual std::string GetContentCharset(void);
 
   private:
     CCacheStrategy *m_pCache;
     bool      m_bDeleteCache;
     int        m_seekPossible;
     CFile      m_source;
-    CStdString    m_sourcePath;
+    std::string    m_sourcePath;
     CEvent      m_seekEvent;
     CEvent      m_seekEnded;
     int64_t      m_nSeekResult;
@@ -75,7 +77,9 @@ namespace XFILE
     unsigned     m_chunkSize;
     unsigned     m_writeRate;
     unsigned     m_writeRateActual;
-    bool         m_cacheFull;
+    int64_t      m_forwardCacheSize;
+    std::atomic<int64_t> m_fileSize;
+    unsigned int m_flags;
     CCriticalSection m_sync;
   };
 

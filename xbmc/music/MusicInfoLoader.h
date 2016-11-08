@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,20 +32,22 @@ public:
   CMusicInfoLoader();
   virtual ~CMusicInfoLoader();
 
-  void UseCacheOnHD(const CStdString& strFileName);
+  void UseCacheOnHD(const std::string& strFileName);
   virtual bool LoadItem(CFileItem* pItem);
+  virtual bool LoadItemCached(CFileItem* pItem);
+  virtual bool LoadItemLookup(CFileItem* pItem);
   static bool LoadAdditionalTagInfo(CFileItem* pItem);
 
 protected:
   virtual void OnLoaderStart();
   virtual void OnLoaderFinish();
-  void LoadCache(const CStdString& strFileName, CFileItemList& items);
-  void SaveCache(const CStdString& strFileName, CFileItemList& items);
+  void LoadCache(const std::string& strFileName, CFileItemList& items);
+  void SaveCache(const std::string& strFileName, CFileItemList& items);
 protected:
-  CStdString m_strCacheFileName;
+  std::string m_strCacheFileName;
   CFileItemList* m_mapFileItems;
   MAPSONGS m_songsMap;
-  CStdString m_strPrevPath;
+  std::string m_strPrevPath;
   CMusicDatabase m_musicDatabase;
   unsigned int m_databaseHits;
   unsigned int m_tagReads;

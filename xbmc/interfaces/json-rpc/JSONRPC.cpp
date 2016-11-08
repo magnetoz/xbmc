@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
@@ -22,6 +22,9 @@
 
 #include "JSONRPC.h"
 #include "ServiceDescription.h"
+#include "addons/Addon.h"
+#include "addons/IAddon.h"
+#include "dbwrappers/DatabaseQuery.h"
 #include "input/ButtonTranslator.h"
 #include "interfaces/AnnouncementManager.h"
 #include "playlists/SmartPlayList.h"
@@ -29,10 +32,10 @@
 #include "utils/log.h"
 #include "utils/StringUtils.h"
 #include "utils/Variant.h"
+#include "TextureDatabase.h"
 
 using namespace ANNOUNCEMENT;
 using namespace JSONRPC;
-using namespace std;
 
 bool CJSONRPC::m_initialized = false;
 
@@ -42,7 +45,12 @@ void CJSONRPC::Initialize()
     return;
 
   // Add some types/enums at runtime
-  vector<string> enumList;
+  std::vector<std::string> enumList;
+  for (int addonType = ADDON::ADDON_UNKNOWN; addonType < ADDON::ADDON_MAX; addonType++)
+    enumList.push_back(ADDON::TranslateType(static_cast<ADDON::TYPE>(addonType), false));
+  CJSONServiceDescription::AddEnum("Addon.Types", enumList);
+
+  enumList.clear();
   CButtonTranslator::GetActions(enumList);
   CJSONServiceDescription::AddEnum("Input.Action", enumList);
 
@@ -51,8 +59,8 @@ void CJSONRPC::Initialize()
   CJSONServiceDescription::AddEnum("GUI.Window", enumList);
 
   // filter-related enums
-  vector<string> smartplaylistList;
-  CSmartPlaylist::GetAvailableOperators(smartplaylistList);
+  std::vector<std::string> smartplaylistList;
+  CDatabaseQueryRule::GetAvailableOperators(smartplaylistList);
   CJSONServiceDescription::AddEnum("List.Filter.Operators", smartplaylistList);
 
   smartplaylistList.clear();
@@ -83,6 +91,10 @@ void CJSONRPC::Initialize()
   CSmartPlaylist::GetAvailableFields("songs", smartplaylistList);
   CJSONServiceDescription::AddEnum("List.Filter.Fields.Songs", smartplaylistList);
 
+  smartplaylistList.clear();
+  CTextureRule::GetAvailableFields(smartplaylistList);
+  CJSONServiceDescription::AddEnum("List.Filter.Fields.Textures", smartplaylistList);
+
   unsigned int size = sizeof(JSONRPC_SERVICE_TYPES) / sizeof(char*);
 
   for (unsigned int index = 0; index < size; index++)
@@ -108,14 +120,14 @@ void CJSONRPC::Cleanup()
   m_initialized = false;
 }
 
-JSONRPC_STATUS CJSONRPC::Introspect(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::Introspect(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   return CJSONServiceDescription::Print(result, transport, client,
     parameterObject["getdescriptions"].asBoolean(), parameterObject["getmetadata"].asBoolean(), parameterObject["filterbytransport"].asBoolean(),
     parameterObject["filter"]["id"].asString(), parameterObject["filter"]["type"].asString(), parameterObject["filter"]["getreferences"].asBoolean());
 }
 
-JSONRPC_STATUS CJSONRPC::Version(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::Version(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   result["version"]["major"] = 0;
   result["version"]["minor"] = 0;
@@ -124,8 +136,8 @@ JSONRPC_STATUS CJSONRPC::Version(const CStdString &method, ITransportLayer *tran
   const char* version = CJSONServiceDescription::GetVersion();
   if (version != NULL)
   {
-    vector<string> parts = StringUtils::Split(version, ".");
-    if (parts.size() > 0)
+    std::vector<std::string> parts = StringUtils::Split(version, ".");
+    if (!parts.empty())
       result["version"]["major"] = (int)strtol(parts[0].c_str(), NULL, 10);
     if (parts.size() > 1)
       result["version"]["minor"] = (int)strtol(parts[1].c_str(), NULL, 10);
@@ -136,7 +148,7 @@ JSONRPC_STATUS CJSONRPC::Version(const CStdString &method, ITransportLayer *tran
   return OK;
 }
 
-JSONRPC_STATUS CJSONRPC::Permission(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::Permission(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   int flags = client->GetPermissionFlags();
 
@@ -146,14 +158,14 @@ JSONRPC_STATUS CJSONRPC::Permission(const CStdString &method, ITransportLayer *t
   return OK;
 }
 
-JSONRPC_STATUS CJSONRPC::Ping(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::Ping(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   CVariant temp = "pong";
   result.swap(temp);
   return OK;
 }
 
-JSONRPC_STATUS CJSONRPC::GetConfiguration(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::GetConfiguration(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   int flags = client->GetAnnouncementFlags();
 
@@ -163,7 +175,7 @@ JSONRPC_STATUS CJSONRPC::GetConfiguration(const CStdString &method, ITransportLa
   return OK;
 }
 
-JSONRPC_STATUS CJSONRPC::SetConfiguration(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::SetConfiguration(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   int flags = 0;
   int oldFlags = client->GetAnnouncementFlags();
@@ -206,27 +218,29 @@ JSONRPC_STATUS CJSONRPC::SetConfiguration(const CStdString &method, ITransportLa
   return GetConfiguration(method, transport, client, parameterObject, result);
 }
 
-JSONRPC_STATUS CJSONRPC::NotifyAll(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
+JSONRPC_STATUS CJSONRPC::NotifyAll(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant& parameterObject, CVariant &result)
 {
   if (parameterObject["data"].isNull())
-    CAnnouncementManager::Announce(Other, parameterObject["sender"].asString().c_str(),  
+    CAnnouncementManager::GetInstance().Announce(Other, parameterObject["sender"].asString().c_str(),  
       parameterObject["message"].asString().c_str());
   else
   {
     CVariant data = parameterObject["data"];
-    CAnnouncementManager::Announce(Other, parameterObject["sender"].asString().c_str(),  
+    CAnnouncementManager::GetInstance().Announce(Other, parameterObject["sender"].asString().c_str(),  
       parameterObject["message"].asString().c_str(), data);
   }
 
   return ACK;
 }
 
-CStdString CJSONRPC::MethodCall(const CStdString &inputString, ITransportLayer *transport, IClient *client)
+std::string CJSONRPC::MethodCall(const std::string &inputString, ITransportLayer *transport, IClient *client)
 {
   CVariant inputroot, outputroot, result;
   bool hasResponse = false;
 
-  CLog::Log(LOGDEBUG, "JSONRPC: Incoming request: %s", inputString.c_str());
+  if(g_advancedSettings.CanLogComponent(LOGJSONRPC))
+    CLog::Log(LOGDEBUG, "JSONRPC: Incoming request: %s", inputString.c_str());
+
   inputroot = CJSONVariantParser::Parse((unsigned char *)inputString.c_str(), inputString.length());
   if (!inputroot.isNull())
   {
@@ -261,7 +275,7 @@ CStdString CJSONRPC::MethodCall(const CStdString &inputString, ITransportLayer *
     hasResponse = true;
   }
 
-  CStdString str = hasResponse ? CJSONVariantWriter::Write(outputroot, g_advancedSettings.m_jsonOutputCompact) : "";
+  std::string str = hasResponse ? CJSONVariantWriter::Write(outputroot, g_advancedSettings.m_jsonOutputCompact) : "";
   return str;
 }
 
@@ -275,13 +289,13 @@ bool CJSONRPC::HandleMethodCall(const CVariant& request, CVariant& response, ITr
   {
     isNotification = !request.isMember("id");
 
-    CStdString methodName = request["method"].asString();
-    methodName = methodName.ToLower();
+    std::string methodName = request["method"].asString();
+    StringUtils::ToLower(methodName);
 
     JSONRPC::MethodCall method;
     CVariant params;
 
-    if ((errorCode = CJSONServiceDescription::CheckCall(methodName, request["params"], transport, client, isNotification, method, params)) == OK)
+    if ((errorCode = CJSONServiceDescription::CheckCall(methodName.c_str(), request["params"], transport, client, isNotification, method, params)) == OK)
       errorCode = method(methodName, transport, client, params, result);
     else
       result = params;

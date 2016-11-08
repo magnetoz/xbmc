@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ class CGUIRenderingControl : public CGUIControl
 public:
   CGUIRenderingControl(int parentID, int controlID, float posX, float posY, float width, float height);
   CGUIRenderingControl(const CGUIRenderingControl &from);
-  virtual CGUIRenderingControl *Clone() const { return new CGUIRenderingControl(*this); }; //TODO check for naughties
+  virtual CGUIRenderingControl *Clone() const { return new CGUIRenderingControl(*this); }; //! @todo check for naughties
 
   virtual void Process(unsigned int currentTime, CDirtyRegionList &dirtyregions);
   virtual void Render();

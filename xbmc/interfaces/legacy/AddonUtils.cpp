@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,35 +13,40 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
-
 #include "AddonUtils.h"
-#include "guilib/GraphicContext.h"
+#include "Application.h"
 #include "utils/XBMCTinyXML.h"
 #include "addons/Skin.h"
+#include "LanguageHook.h"
+#ifdef ENABLE_XBMC_TRACE_API
 #include "utils/log.h"
 #include "threads/ThreadLocal.h"
+#endif
 
 namespace XBMCAddonUtils
 {
-  //***********************************************************
-  // Some simple helpers
-  void guiLock()
+  GuiLock::GuiLock()
   {
-    g_graphicsContext.Lock();
+    languageHook = XBMCAddon::LanguageHook::GetLanguageHook();
+    if (languageHook)
+      languageHook->DelayedCallOpen();
+
+    g_application.LockFrameMoveGuard();
   }
 
-  void guiUnlock()
+  GuiLock::~GuiLock()
   {
-    g_graphicsContext.Unlock();
+    g_application.UnlockFrameMoveGuard();
+
+    if (languageHook)
+      languageHook->DelayedCallClose();
   }
-  //***********************************************************
-  
+
   static char defaultImage[1024];
 
   const char *getDefaultImage(char* cControlType, char* cTextureType, char* cDefault)
@@ -72,7 +77,7 @@ namespace XBMCAddonUtils
     return cDefault;
   }
 
-#ifdef ENABLE_TRACE_API
+#ifdef ENABLE_XBMC_TRACE_API
   static XbmcThreads::ThreadLocal<TraceGuard> tlParent;
 
   static char** getSpacesArray(int size)

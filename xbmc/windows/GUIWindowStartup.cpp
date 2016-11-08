@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,7 +19,8 @@
  */
 
 #include "GUIWindowStartup.h"
-#include "guilib/Key.h"
+#include "input/Key.h"
+#include "guilib/GUIWindowManager.h"
 #include "guilib/WindowIDs.h"
 
 CGUIWindowStartup::CGUIWindowStartup(void)
@@ -36,4 +37,13 @@ bool CGUIWindowStartup::OnAction(const CAction &action)
   if (action.IsMouse())
     return true;
   return CGUIWindow::OnAction(action);
+}
+
+void CGUIWindowStartup::OnDeinitWindow(int nextWindowID)
+{
+  CGUIWindow::OnDeinitWindow(nextWindowID);
+
+  // let everyone know that the user interface is now ready for usage
+  CGUIMessage msg(GUI_MSG_NOTIFY_ALL, 0, 0, GUI_MSG_UI_READY);
+  g_windowManager.SendThreadMessage(msg);
 }

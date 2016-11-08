@@ -19,24 +19,41 @@
  *
  */
 
+#include <map>
 #include <set>
-#include "utils/StdString.h"
+#include <string>
+#include <vector>
 #include "peripherals/PeripheralTypes.h"
 
 class TiXmlDocument;
-
 class CSetting;
+
+namespace JOYSTICK
+{
+  class IButtonMapper;
+  class IDriverHandler;
+  class IDriverReceiver;
+  class IInputHandler;
+}
 
 namespace PERIPHERALS
 {
   class CGUIDialogPeripheralSettings;
+  class CPeripheralBus;
+
+  typedef enum
+  {
+    STATE_SWITCH_TOGGLE,
+    STATE_ACTIVATE_SOURCE,
+    STATE_STANDBY
+  } CecStateChange;
 
   class CPeripheral
   {
     friend class CGUIDialogPeripheralSettings;
 
   public:
-    CPeripheral(const PeripheralScanResult& scanResult);
+    CPeripheral(const PeripheralScanResult& scanResult, CPeripheralBus* bus);
     virtual ~CPeripheral(void);
 
     bool operator ==(const CPeripheral &right) const;
@@ -44,18 +61,24 @@ namespace PERIPHERALS
     bool operator ==(const PeripheralScanResult& right) const;
     bool operator !=(const PeripheralScanResult& right) const;
 
-    const CStdString &FileLocation(void) const     { return m_strFileLocation; }
-    const CStdString &Location(void) const         { return m_strLocation; }
+    const std::string &FileLocation(void) const     { return m_strFileLocation; }
+    const std::string &Location(void) const         { return m_strLocation; }
     int VendorId(void) const                       { return m_iVendorId; }
     const char *VendorIdAsString(void) const       { return m_strVendorId.c_str(); }
     int ProductId(void) const                      { return m_iProductId; }
     const char *ProductIdAsString(void) const      { return m_strProductId.c_str(); }
     const PeripheralType Type(void) const          { return m_type; }
     const PeripheralBusType GetBusType(void) const { return m_busType; };
-    const CStdString &DeviceName(void) const       { return m_strDeviceName; }
+    const std::string &DeviceName(void) const       { return m_strDeviceName; }
     bool IsHidden(void) const                      { return m_bHidden; }
     void SetHidden(bool bSetTo = true)             { m_bHidden = bSetTo; }
-    const CStdString &GetVersionInfo(void) const   { return m_strVersionInfo; }
+    const std::string &GetVersionInfo(void) const   { return m_strVersionInfo; }
+
+    /*!
+     * @brief Get an icon for this peripheral
+     * @return Path to an icon, or skin icon file name
+     */
+    virtual std::string GetIcon() const;
 
     /*!
      * @brief Check whether this device has the given feature.
@@ -84,10 +107,22 @@ namespace PERIPHERALS
     virtual bool InitialiseFeature(const PeripheralFeature feature) { return true; }
 
     /*!
+    * @brief Briefly activate a feature to notify the user
+    */
+    virtual void OnUserNotification() { }
+
+    /*!
+     * @brief Briefly test one of the features of this peripheral.
+     * @param feature The feature to test.
+     * @return True if the test succeeded, false otherwise.
+     */
+    virtual bool TestFeature(PeripheralFeature feature) { return false; }
+
+    /*!
      * @brief Called when a setting changed.
      * @param strChangedSetting The changed setting.
      */
-    virtual void OnSettingChanged(const CStdString &strChangedSetting) {};
+    virtual void OnSettingChanged(const std::string &strChangedSetting) {};
 
     /*!
      * @brief Called when this device is removed, before calling the destructor.
@@ -98,7 +133,7 @@ namespace PERIPHERALS
      * @brief Get all subdevices if this device is multifunctional.
      * @param subDevices The subdevices.
      */
-    virtual void GetSubdevices(std::vector<CPeripheral *> &subDevices) const;
+    virtual void GetSubdevices(PeripheralVector &subDevices) const;
 
     /*!
      * @return True when this device is multifunctional, false otherwise.
@@ -110,14 +145,14 @@ namespace PERIPHERALS
      * @param strKey The key of the setting.
      * @param setting The setting.
      */
-    virtual void AddSetting(const CStdString &strKey, const CSetting *setting);
+    virtual void AddSetting(const std::string &strKey, const CSetting *setting, int order);
 
     /*!
      * @brief Check whether a setting is known with the given key.
      * @param strKey The key to search.
      * @return True when found, false otherwise.
      */
-    virtual bool HasSetting(const CStdString &strKey) const;
+    virtual bool HasSetting(const std::string &strKey) const;
 
     /*!
      * @return True when this device has any settings, false otherwise.
@@ -134,19 +169,19 @@ namespace PERIPHERALS
      * @param strKey The key to search.
      * @return The value or an empty string if it wasn't found.
      */
-    virtual const CStdString GetSettingString(const CStdString &strKey) const;
-    virtual bool SetSetting(const CStdString &strKey, const CStdString &strValue);
-    virtual void SetSettingVisible(const CStdString &strKey, bool bSetTo);
-    virtual bool IsSettingVisible(const CStdString &strKey) const;
+    virtual const std::string GetSettingString(const std::string &strKey) const;
+    virtual bool SetSetting(const std::string &strKey, const std::string &strValue);
+    virtual void SetSettingVisible(const std::string &strKey, bool bSetTo);
+    virtual bool IsSettingVisible(const std::string &strKey) const;
 
-    virtual int GetSettingInt(const CStdString &strKey) const;
-    virtual bool SetSetting(const CStdString &strKey, int iValue);
+    virtual int GetSettingInt(const std::string &strKey) const;
+    virtual bool SetSetting(const std::string &strKey, int iValue);
 
-    virtual bool GetSettingBool(const CStdString &strKey) const;
-    virtual bool SetSetting(const CStdString &strKey, bool bValue);
+    virtual bool GetSettingBool(const std::string &strKey) const;
+    virtual bool SetSetting(const std::string &strKey, bool bValue);
 
-    virtual float GetSettingFloat(const CStdString &strKey) const;
-    virtual bool SetSetting(const CStdString &strKey, float fValue);
+    virtual float GetSettingFloat(const std::string &strKey) const;
+    virtual bool SetSetting(const std::string &strKey, float fValue);
 
     virtual void PersistSettings(bool bExiting = false);
     virtual void LoadPersistedSettings(void);
@@ -156,27 +191,41 @@ namespace PERIPHERALS
 
     virtual bool ErrorOccured(void) const { return m_bError; }
 
+    virtual void RegisterJoystickDriverHandler(JOYSTICK::IDriverHandler* handler, bool bPromiscuous) { }
+    virtual void UnregisterJoystickDriverHandler(JOYSTICK::IDriverHandler* handler) { }
+
+    virtual void RegisterJoystickInputHandler(JOYSTICK::IInputHandler* handler);
+    virtual void UnregisterJoystickInputHandler(JOYSTICK::IInputHandler* handler);
+
+    virtual void RegisterJoystickButtonMapper(JOYSTICK::IButtonMapper* mapper);
+    virtual void UnregisterJoystickButtonMapper(JOYSTICK::IButtonMapper* mapper);
+
+    virtual JOYSTICK::IDriverReceiver* GetDriverReceiver() { return nullptr; }
+
   protected:
     virtual void ClearSettings(void);
 
     PeripheralType                   m_type;
     PeripheralBusType                m_busType;
     PeripheralBusType                m_mappedBusType;
-    CStdString                       m_strLocation;
-    CStdString                       m_strDeviceName;
-    CStdString                       m_strSettingsFile;
-    CStdString                       m_strFileLocation;
+    std::string                       m_strLocation;
+    std::string                       m_strDeviceName;
+    std::string                       m_strSettingsFile;
+    std::string                       m_strFileLocation;
     int                              m_iVendorId;
-    CStdString                       m_strVendorId;
+    std::string                       m_strVendorId;
     int                              m_iProductId;
-    CStdString                       m_strProductId;
-    CStdString                       m_strVersionInfo;
+    std::string                       m_strProductId;
+    std::string                       m_strVersionInfo;
     bool                             m_bInitialised;
     bool                             m_bHidden;
     bool                             m_bError;
     std::vector<PeripheralFeature>   m_features;
-    std::vector<CPeripheral *>       m_subDevices;
-    std::map<CStdString, CSetting *> m_settings;
-    std::set<CStdString>             m_changedSettings;
+    PeripheralVector                 m_subDevices;
+    std::map<std::string, PeripheralDeviceSetting> m_settings;
+    std::set<std::string>             m_changedSettings;
+    CPeripheralBus*                  m_bus;
+    std::map<JOYSTICK::IInputHandler*, std::unique_ptr<JOYSTICK::IDriverHandler>> m_inputHandlers;
+    std::map<JOYSTICK::IButtonMapper*, JOYSTICK::IDriverHandler*> m_buttonMappers;
   };
 }

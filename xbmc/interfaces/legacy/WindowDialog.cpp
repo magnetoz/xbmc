@@ -1,6 +1,6 @@
  /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -23,25 +22,28 @@
 
 #include "guilib/GUIWindow.h"
 #include "guilib/GUIWindowManager.h"
+#include "WindowInterceptor.h"
 
 namespace XBMCAddon
 {
   namespace xbmcgui
   {
-
-    WindowDialog::WindowDialog() throw(WindowException) :
-      Window("WindowDialog"), WindowDialogMixin(this)
+    WindowDialog::WindowDialog() :
+      Window(true), WindowDialogMixin(this)
     {
       CSingleLock lock(g_graphicsContext);
-      setWindow(new Interceptor<CGUIWindow>("CGUIWindow",this,getNextAvailalbeWindowId()));
+      InterceptorBase* interceptor = new Interceptor<CGUIWindow>("CGUIWindow", this, getNextAvailableWindowId());
+      // set the render order to the dialog's default because this dialog is mapped to CGUIWindow instead of CGUIDialog
+      interceptor->SetRenderOrder(RENDER_ORDER_DIALOG);
+      setWindow(interceptor);
     }
 
     WindowDialog::~WindowDialog() { deallocating(); }
 
     bool WindowDialog::OnMessage(CGUIMessage& message)
     {
-#ifdef ENABLE_TRACE_API
-      TRACE;
+#ifdef ENABLE_XBMC_TRACE_API
+      XBMC_TRACE;
       CLog::Log(LOGDEBUG,"%sNEWADDON WindowDialog::OnMessage Message %d", _tg.getSpaces(),message.GetMessage());
 #endif
 
@@ -67,7 +69,7 @@ namespace XBMCAddon
 
     bool WindowDialog::OnAction(const CAction &action)
     {
-      TRACE;
+      XBMC_TRACE;
       return WindowDialogMixin::OnAction(action) ? true : Window::OnAction(action);
     }
 

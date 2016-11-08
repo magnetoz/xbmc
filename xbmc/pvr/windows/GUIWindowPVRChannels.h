@@ -1,8 +1,7 @@
 #pragma once
-
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,53 +19,39 @@
  *
  */
 
-#include "GUIWindowPVRCommon.h"
-#include "utils/Observer.h"
-#include "../channels/PVRChannelGroup.h"
+#include "GUIWindowPVRBase.h"
 
 namespace PVR
 {
-  class CGUIWindowPVR;
-
-  class CGUIWindowPVRChannels : public CGUIWindowPVRCommon, private Observer
+  class CGUIWindowPVRChannels : public CGUIWindowPVRBase
   {
-    friend class CGUIWindowPVR;
-
   public:
-    CGUIWindowPVRChannels(CGUIWindowPVR *parent, bool bRadio);
+    CGUIWindowPVRChannels(bool bRadio);
     virtual ~CGUIWindowPVRChannels(void);
 
-    void GetContextButtons(int itemNumber, CContextButtons &buttons) const;
-    bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
-    CPVRChannelGroupPtr SelectedGroup(void);
-    void SetSelectedGroup(CPVRChannelGroupPtr group);
-    CPVRChannelGroupPtr SelectNextGroup(void);
-    void UpdateData(bool bUpdateSelectedFile = true);
-    void Notify(const Observable &obs, const ObservableMessage msg);
-    void ResetObservers(void);
-    void UnregisterObservers(void);
+    virtual bool OnMessage(CGUIMessage& message) override;
+    virtual void GetContextButtons(int itemNumber, CContextButtons &buttons) override;
+    virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button) override;
+    virtual bool Update(const std::string &strDirectory, bool updateFilterPath = true) override;
+    virtual void UpdateButtons(void) override;
+    virtual bool OnAction(const CAction &action) override;
+
+  protected:
+    virtual std::string GetDirectoryPath(void) override;
 
   private:
-    bool OnClickButton(CGUIMessage &message);
-    bool OnClickList(CGUIMessage &message);
-
     bool OnContextButtonAdd(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonGroupManager(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonHide(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonInfo(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonMove(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonPlay(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonSetThumb(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonShowHidden(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonFilter(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonManage(CFileItem *item, CONTEXT_BUTTON button);
     bool OnContextButtonUpdateEpg(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonRecord(CFileItem *item, CONTEXT_BUTTON button);
-    bool OnContextButtonLock(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonAddTimer(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonStartRecord(CFileItem *item, CONTEXT_BUTTON button);
+    bool OnContextButtonStopRecord(CFileItem *item, CONTEXT_BUTTON button);
 
+    void ShowChannelManager();
     void ShowGroupManager(void);
 
-    CPVRChannelGroupPtr m_selectedGroup;
-    bool              m_bShowHiddenChannels;
-    bool              m_bRadio;
+    bool m_bShowHiddenChannels;
   };
 }

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,13 +30,13 @@ CMusicInfoTagLoaderSHN::CMusicInfoTagLoaderSHN(void)
 CMusicInfoTagLoaderSHN::~CMusicInfoTagLoaderSHN()
 {}
 
-bool CMusicInfoTagLoaderSHN::Load(const CStdString& strFileName, CMusicInfoTag& tag, EmbeddedArt *art)
+bool CMusicInfoTagLoaderSHN::Load(const std::string& strFileName, CMusicInfoTag& tag, EmbeddedArt *art)
 {
   try
   {
 
     tag.SetURL(strFileName);
-    tag.SetDuration((long)0); //TODO: Use libavformat to calculate duration.
+    tag.SetDuration((long)0); //! @todo Use libavformat to calculate duration.
     tag.SetLoaded(false);
 
     return true;

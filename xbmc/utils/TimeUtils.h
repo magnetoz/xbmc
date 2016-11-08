@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 #include <time.h>
 
 class CDateTime;
-class CTimeSmoother;
 
 int64_t CurrentHostCounter(void);
 int64_t CurrentHostFrequency(void);
@@ -38,6 +37,5 @@ public:
 
 private:
   static unsigned int frameTime;
-  static CTimeSmoother *frameTimer;
 };
 

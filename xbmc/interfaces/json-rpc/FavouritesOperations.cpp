@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2011-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2011-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,33 +13,32 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with Kodi; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "FavouritesOperations.h"
-#include "Favourites.h"
+#include "filesystem/FavouritesDirectory.h"
 #include "input/ButtonTranslator.h"
-#include "utils/RegExp.h"
 #include "utils/StringUtils.h"
 #include "Util.h"
 #include "utils/URIUtils.h"
+#include "utils/Variant.h"
 #include "guilib/WindowIDs.h"
 #include <vector>
 
-using namespace std;
 using namespace JSONRPC;
+using namespace XFILE;
 
-JSONRPC_STATUS CFavouritesOperations::GetFavourites(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CFavouritesOperations::GetFavourites(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
 {
   CFileItemList favourites;
-  CFavourites::Load(favourites);
+  CFavouritesDirectory::Load(favourites);
   
-  string type = !parameterObject["type"].isNull() ? parameterObject["type"].asString() : "";
+  std::string type = !parameterObject["type"].isNull() ? parameterObject["type"].asString() : "";
 
-  set<string> fields;
+  std::set<std::string> fields;
   if (parameterObject.isMember("properties") && parameterObject["properties"].isArray())
   {
     for (CVariant::const_iterator_array field = parameterObject["properties"].begin_array(); field != parameterObject["properties"].end_array(); field++)
@@ -51,23 +50,23 @@ JSONRPC_STATUS CFavouritesOperations::GetFavourites(const CStdString &method, IT
     CVariant object;
     CFileItemPtr item = favourites.Get(i);
 
-    CStdString function;
-    vector<CStdString> parameters;
+    std::string function;
+    std::vector<std::string> parameters;
     CUtil::SplitExecFunction(item->GetPath(), function, parameters);
-    if (parameters.size() == 0)
+    if (parameters.empty())
       continue;
 
     object["title"] = item->GetLabel();
     if (fields.find("thumbnail") !=  fields.end())
       object["thumbnail"] = item->GetArt("thumb");
 
-    if (function.CompareNoCase("ActivateWindow") == 0)
+    if (StringUtils::EqualsNoCase(function, "ActivateWindow"))
     {
       object["type"] = "window";
       if (fields.find("window") != fields.end())
       {
         if (StringUtils::IsNaturalNumber(parameters[0]))
-          object["window"] = CButtonTranslator::TranslateWindow(strtol(parameters[0], NULL, 10));
+          object["window"] = CButtonTranslator::TranslateWindow(strtol(parameters[0].c_str(), NULL, 10));
         else
           object["window"] = parameters[0];
       }
@@ -79,13 +78,13 @@ JSONRPC_STATUS CFavouritesOperations::GetFavourites(const CStdString &method, IT
           object["windowparameter"] = "";
       }
     }
-    else if (function.CompareNoCase("PlayMedia") == 0)
+    else if (StringUtils::EqualsNoCase(function, "PlayMedia"))
     {
       object["type"] = "media";
       if (fields.find("path") !=  fields.end())
         object["path"] = parameters[0];
     }
-    else if (function.CompareNoCase("RunScript") == 0)
+    else if (StringUtils::EqualsNoCase(function, "RunScript"))
     {
       object["type"] = "script";
       if (fields.find("path") !=  fields.end())
@@ -104,9 +103,9 @@ JSONRPC_STATUS CFavouritesOperations::GetFavourites(const CStdString &method, IT
   return OK;
 }
 
-JSONRPC_STATUS CFavouritesOperations::AddFavourite(const CStdString &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CFavouritesOperations::AddFavourite(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
 {
-  string type = parameterObject["type"].asString();
+  std::string type = parameterObject["type"].asString();
 
   if (type.compare("unknown") == 0)
     return InvalidParams;
@@ -129,8 +128,8 @@ JSONRPC_STATUS CFavouritesOperations::AddFavourite(const CStdString &method, ITr
     return InvalidParams;
   }
 
-  string title = parameterObject["title"].asString();
-  string path = parameterObject["path"].asString();
+  std::string title = parameterObject["title"].asString();
+  std::string path = parameterObject["path"].asString();
 
   CFileItem item;
   int contextWindow = 0;
@@ -158,7 +157,7 @@ JSONRPC_STATUS CFavouritesOperations::AddFavourite(const CStdString &method, ITr
   if (ParameterNotNull(parameterObject,"thumbnail"))
     item.SetArt("thumb", parameterObject["thumbnail"].asString());
 
-  if (CFavourites::AddOrRemove(&item, contextWindow))
+  if (CFavouritesDirectory::AddOrRemove(&item, contextWindow))
     return ACK;
   else
     return FailedToExecute;

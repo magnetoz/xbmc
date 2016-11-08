@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,10 +32,10 @@ class CRecentlyAddedJob : public CJob
 {
 public:
   CRecentlyAddedJob(int flag);
-  bool UpdateVideo();
-  bool UpdateMusic();
-  bool UpdateTotal();
-  virtual bool DoWork();
+  static bool UpdateVideo();
+  static bool UpdateMusic();
+  static bool UpdateTotal();
+  bool DoWork() override;
 private:
   int m_flag;
 };

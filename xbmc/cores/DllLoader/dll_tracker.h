@@ -1,9 +1,8 @@
-#ifndef _DLL_TRACKER_H_
-#define _DLL_TRACKER_H_
+#pragma once
 
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +15,14 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
+ *  along with Kodi; see the file COPYING.  If not, see
  *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "threads/CriticalSection.h"
 #include "PlatformDefs.h"
-#ifdef _WIN32
+#ifdef TARGET_WINDOWS
 #include "system.h" // for SOCKET
 #endif
 
@@ -117,7 +116,7 @@ void tracker_dll_free(DllLoader* pDll);
 void tracker_dll_set_addr(DllLoader* pDll, uintptr_t min, uintptr_t max);
 
 // returns the name from the dll that contains this addres or "" if not found
-char* tracker_getdllname(uintptr_t caller);
+const char* tracker_getdllname(uintptr_t caller);
 
 // returns a function pointer if there is one available for it, or NULL if not ofund
 void* tracker_dll_get_function(DllLoader* pDll, char* sFunctionName);
@@ -128,7 +127,7 @@ DllTrackInfo* tracker_get_dlltrackinfo(uintptr_t caller);
 
 void tracker_dll_data_track(DllLoader* pDll, uintptr_t addr);
 
-#ifdef _LINUX
+#ifdef TARGET_POSIX
 #define _ReturnAddress() __builtin_return_address(0)
 #endif
 
@@ -136,9 +135,8 @@ void tracker_dll_data_track(DllLoader* pDll, uintptr_t addr);
 }
 #endif
 
-#ifndef _LINUX
+#ifndef TARGET_POSIX
 extern "C" void * _ReturnAddress(void);
 #pragma intrinsic(_ReturnAddress)
 #endif
 
-#endif // _DLL_TRACKER_H_

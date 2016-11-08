@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,10 +31,6 @@
 #include "GUISliderControl.h"
 #include "GUIButtonControl.h"
 
-#define SPIN_CONTROL_TYPE_INT    1
-#define SPIN_CONTROL_TYPE_FLOAT  2
-#define SPIN_CONTROL_TYPE_TEXT   3
-
 /*!
  \ingroup controls
  \brief
@@ -50,6 +46,10 @@ public:
   virtual void Process(unsigned int currentTime, CDirtyRegionList &dirtyregions);
   virtual void Render();
   virtual bool OnAction(const CAction &action);
+  void OnUnFocus() override;
+  EVENT_RESULT OnMouseEvent(const CPoint& point, const CMouseEvent& event) override;
+  void SetActive();
+  bool IsActive() const override { return m_active; };
   virtual void AllocResources();
   virtual void FreeResources(bool immediately = false);
   virtual void DynamicResourceAlloc(bool bOnOff);
@@ -64,7 +64,7 @@ public:
   void SetText(const std::string &label) {m_buttonControl.SetLabel(label);};
   virtual float GetXPosition() const { return m_buttonControl.GetXPosition();};
   virtual float GetYPosition() const { return m_buttonControl.GetYPosition();};
-  virtual CStdString GetDescription() const;
+  virtual std::string GetDescription() const;
   virtual bool HitTest(const CPoint &point) const { return m_buttonControl.HitTest(point); };
 
 protected:
@@ -74,5 +74,6 @@ protected:
 private:
   CGUIButtonControl m_buttonControl;
   CGUILabel m_label;
+  bool m_active; ///< Whether the slider has been activated by a click.
 };
 #endif

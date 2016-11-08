@@ -1,32 +1,33 @@
+#pragma once
+
 /*
-    SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
-
-    This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
-    License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
-
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-
-    Sam Lantinga
-    slouken@libsdl.org
-*/
+ *      SDL - Simple DirectMedia Layer
+ *      Copyright (C) 1997-2009 Sam Lantinga
+ *      Sam Lantinga
+ *      slouken@libsdl.org
+ *  
+ *      Copyright (C) 2005-2015 Team Kodi
+ *      http://kodi.tv
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with Kodi; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 /* Include file for SDL event handling */
 
-#ifndef _XBMC_events_h
-#define _XBMC_events_h
-
 #include "input/XBMC_keyboard.h"
-#include "input/XBMC_mouse.h"
 
 
 /* General keyboard/mouse state definitions */
@@ -42,11 +43,6 @@ typedef enum {
        XBMC_MOUSEMOTION,        /* Mouse moved */
        XBMC_MOUSEBUTTONDOWN,    /* Mouse button pressed */
        XBMC_MOUSEBUTTONUP,      /* Mouse button released */
-       XBMC_JOYAXISMOTION,      /* Joystick axis motion */
-       XBMC_JOYBALLMOTION,      /* Joystick trackball motion */
-       XBMC_JOYHATMOTION,       /* Joystick hat position change */
-       XBMC_JOYBUTTONDOWN,      /* Joystick button pressed */
-       XBMC_JOYBUTTONUP,        /* Joystick button released */
        XBMC_QUIT,               /* User-requested quit */
        XBMC_SYSWMEVENT,         /* System specific event */
        XBMC_VIDEORESIZE,        /* User resized video mode */
@@ -54,6 +50,7 @@ typedef enum {
        XBMC_VIDEOEXPOSE,        /* Screen needs to be redrawn */
        XBMC_APPCOMMAND,         /* Media commands, such as WM_APPCOMMAND on Windows for media keys. */
        XBMC_TOUCH,
+       XBMC_SETFOCUS,
        XBMC_USEREVENT,
 
        XBMC_MAXEVENT = 256      /* XBMC_EventType is represented as uchar */
@@ -92,45 +89,6 @@ typedef struct XBMC_MouseButtonEvent {
 	unsigned char state;	/* XBMC_PRESSED or XBMC_RELEASED */
 	uint16_t x, y;	/* The X/Y coordinates of the mouse at press time */
 } XBMC_MouseButtonEvent;
-
-/* Joystick axis motion event structure */
-typedef struct XBMC_JoyAxisEvent {
-	unsigned char type;	/* XBMC_JOYAXISMOTION */
-	unsigned char which;	/* The joystick device index */
-	unsigned char axis;	/* The joystick axis index */
-	int16_t value;	/* The axis value (range: -32768 to 32767) */
-} XBMC_JoyAxisEvent;
-
-/* Joystick trackball motion event structure */
-typedef struct XBMC_JoyBallEvent {
-	unsigned char type;	/* XBMC_JOYBALLMOTION */
-	unsigned char which;	/* The joystick device index */
-	unsigned char ball;	/* The joystick trackball index */
-	int16_t xrel;	/* The relative motion in the X direction */
-	int16_t yrel;	/* The relative motion in the Y direction */
-} XBMC_JoyBallEvent;
-
-/* Joystick hat position change event structure */
-typedef struct XBMC_JoyHatEvent {
-	unsigned char type;	/* XBMC_JOYHATMOTION */
-	unsigned char which;	/* The joystick device index */
-	unsigned char hat;	/* The joystick hat index */
-	unsigned char value;	/* The hat position value:
-			    XBMC_HAT_LEFTUP   XBMC_HAT_UP       XBMC_HAT_RIGHTUP
-			    XBMC_HAT_LEFT     XBMC_HAT_CENTERED XBMC_HAT_RIGHT
-			    XBMC_HAT_LEFTDOWN XBMC_HAT_DOWN     XBMC_HAT_RIGHTDOWN
-			   Note that zero means the POV is centered.
-			*/
-} XBMC_JoyHatEvent;
-
-/* Joystick button event structure */
-typedef struct XBMC_JoyButtonEvent {
-	unsigned char type;	/* XBMC_JOYBUTTONDOWN or XBMC_JOYBUTTONUP */
-	unsigned char which;	/* The joystick device index */
-	unsigned char button;	/* The joystick button index */
-	unsigned char state;	/* XBMC_PRESSED or XBMC_RELEASED */
-  uint32_t      holdTime; /*holdTime of the pressed button*/
-} XBMC_JoyButtonEvent;
 
 /* The "window resized" event
    When you get this event, you are responsible for setting a new video
@@ -189,6 +147,12 @@ typedef struct XBMC_TouchEvent {
   int pointers;         /* number of touch pointers */
 } XBMC_TouchEvent;
 
+typedef struct XBMC_SetFocusEvent {
+	unsigned char type;	/* XBMC_SETFOCUS */
+	int x;		/* x position */
+	int y;		/* y position */
+} XBMC_SetFocusEvent;
+
 /* General event structure */
 typedef union XBMC_Event {
   unsigned char type;
@@ -196,10 +160,6 @@ typedef union XBMC_Event {
   XBMC_KeyboardEvent key;
   XBMC_MouseMotionEvent motion;
   XBMC_MouseButtonEvent button;
-  XBMC_JoyAxisEvent jaxis;
-  XBMC_JoyBallEvent jball;
-  XBMC_JoyHatEvent jhat;
-  XBMC_JoyButtonEvent jbutton;
   XBMC_ResizeEvent resize;
   XBMC_MoveEvent move;
   XBMC_ExposeEvent expose;
@@ -208,6 +168,6 @@ typedef union XBMC_Event {
   XBMC_SysWMEvent syswm;
   XBMC_AppCommandEvent appcommand;
   XBMC_TouchEvent touch;
+  XBMC_SetFocusEvent focus;
 } XBMC_Event;
 
-#endif /* _XBMC_events_h */

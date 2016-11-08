@@ -1,11 +1,12 @@
 SRCS=GUIViewStatePVR.cpp \
-     GUIWindowPVR.cpp \
+     GUIWindowPVRBase.cpp \
      GUIWindowPVRChannels.cpp \
-     GUIWindowPVRCommon.cpp \
      GUIWindowPVRGuide.cpp \
      GUIWindowPVRRecordings.cpp \
      GUIWindowPVRSearch.cpp \
-     GUIWindowPVRTimers.cpp
+     GUIWindowPVRTimersBase.cpp \
+     GUIWindowPVRTimers.cpp \
+     GUIWindowPVRTimerRules.cpp
 
 LIB=pvrwindows.a
 
